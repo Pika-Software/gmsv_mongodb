@@ -60,11 +60,11 @@ namespace Global
 	}
 
 	// Shutdown
-	int Deinitialize(ILuaBase* LUA)
-	{
-		//MongoDB_Instance->~instance(); // Crashing gmod when server shutdown. Maybe fix it tommorow
-		return 0;
-	}
+	// int Deinitialize(ILuaBase* LUA)
+	// {
+	// 	//MongoDB_Instance->~instance(); // Crashing gmod when server shutdown. Maybe fix it tommorow
+	// 	return 0;
+	// }
 }
 
 // Initalization Garry's mod
@@ -73,7 +73,7 @@ GMOD_MODULE_OPEN()
 	return Global::Initialize(LUA);
 }
 
-GMOD_MODULE_CLOSE()
-{
-	return Global::Deinitialize(LUA);
-}
+// GMOD_MODULE_CLOSE()
+// {
+// 	return Global::Deinitialize(LUA);
+// }

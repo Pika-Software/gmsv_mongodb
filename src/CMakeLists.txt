@@ -18,20 +18,20 @@ set(SOURCES
     bson/types/oid.h
 )
 
-# Configuration files
+# Generating configure file
 configure_file(config.h.in config.h @ONLY)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-# Adding source files to dll
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 target_link_libraries(${PROJECT_NAME} PRIVATE gmod-module-base)
-
-# Including boost if found
-if (${Boost_FOUND})
-    target_link_libraries(${PROJECT_NAME} LINK_PUBLIC ${Boost_LIBRARIES})
-endif()
-
-# MongoDB libraries
-target_link_libraries(${PROJECT_NAME} PRIVATE mongo::bsoncxx_shared mongo::mongocxx_shared)
-
 set_gmod_suffix_prefix(${PROJECT_NAME})
+
+# Visual Studio pre 2017 requires boost polyfill.
+if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND CMAKE_CXX_STANDARD LESS 17)
+    find_package(Boost 1.56.0 REQUIRED)
+    target_include_directories(${PROJECT_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
+endif() 
+
+target_include_directories(${PROJECT_NAME} PRIVATE ${LIBMONGOCXX_STATIC_INCLUDE_DIRS} ${LIBBSONCXX_STATIC_INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBMONGOCXX_STATIC_LIBRARIES} ${LIBBSONCXX_STATIC_LIBRARIES})
+target_compile_definitions(${PROJECT_NAME} PRIVATE ${LIBMONGOCXX_STATIC_DEFINITIONS} ${LIBBSONCXX_STATIC_DEFINITIONS})

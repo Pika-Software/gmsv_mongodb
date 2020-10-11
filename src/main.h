@@ -17,7 +17,7 @@ namespace Global
 	int Initialize(ILuaBase* LUA);
 
 	// Shutdown
-	int Deinitialize(ILuaBase* LUA);
+	//int Deinitialize(ILuaBase* LUA);
 }
 
 #endif // MAIN_H

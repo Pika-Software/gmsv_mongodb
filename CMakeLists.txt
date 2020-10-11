@@ -1,5 +1,26 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.2 FATAL_ERROR)
+
+if(POLICY CMP0025)
+    cmake_policy(SET CMP0025 NEW)
+endif()
+
 project(gmsv_mongodb VERSION 1.0.0 LANGUAGES CXX)
+
+# Enforce the C++ standard, and disable extensions.
+if(NOT DEFINED CMAKE_CXX_STANDARD)
+    set(CMAKE_CXX_STANDARD 11)
+endif()
+
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+if (NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror")
+endif()
+
+# NOTE: For this to work, the CMAKE_PREFIX_PATH variable must be set to point to the directory that
+# was used as the argument to CMAKE_INSTALL_PREFIX when building libmongocxx.
+find_package(libmongocxx-static REQUIRED)
+find_package(libbsoncxx-static REQUIRED)
 
 # Variables
 set(VERSION "1.0.0")
@@ -8,31 +29,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/Release)
 set(CMAKE_RUNTIME_LIBRARY_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/Debug)
 set(CMAKE_RUNTIME_LIBRARY_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/Release)
 set(CMAKE_CONFIGURATION_TYPES Release Debug)
-set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Including mongocxx
-find_package(mongocxx REQUIRED)
-find_package(bsoncxx REQUIRED)
-include_directories(${LIBMONGOCXX_INCLUDE_DIR})
-include_directories(${LIBBSONCXX_INCLUDE_DIR})
-include_directories("/usr/local/include/mongocxx/v_noabi")
-include_directories("/usr/local/include/bsoncxx/v_noabi")
-include_directories("/usr/local/include/libmongoc-1.0")
-include_directories("/usr/local/include/libbson-1.0")
-
-# Including boost
-option(USE_BOOST "If you are use boost" OFF)
-
-if (USE_BOOST)
-    set(Boost_USE_STATIC_LIBS OFF) 
-    set(Boost_USE_MULTITHREADED ON)  
-    set(Boost_USE_STATIC_RUNTIME OFF) 
-
-    find_package( Boost 1.56.0 REQUIRED )
-    include_directories(${Boost_INCLUDE_DIR})
-endif()
-
-# Other
+# Subdirectories
 add_subdirectory(include)
 add_subdirectory(src)
