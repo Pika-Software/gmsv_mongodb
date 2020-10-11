@@ -1,21 +1,15 @@
-cmake_minimum_required(VERSION 3.10)
-project(gmsv_mongodb VERSION 1.0.0)
+cmake_minimum_required(VERSION 3.0)
+project(gmsv_mongodb VERSION 1.0.0 LANGUAGES CXX)
 
 # Variables
 set(VERSION "1.0.0")
-set(output_template "gmsv_mongodb_platform")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
-
-# Detecting platform
-if (WIN32) # Windows
-    set(output_platform "win32")
-elseif (UNIX) # Linux
-    set(output_platform "linux")
-else() # Mac OS X
-    set(output_platform "osx")
-endif()
-
-string(REPLACE "platform" ${output_platform} output_name ${output_template}) # https://wiki.facepunch.com/gmod/Creating_Binary_Modules#naminglocation
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/Debug)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/Release)
+set(CMAKE_RUNTIME_LIBRARY_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/Debug)
+set(CMAKE_RUNTIME_LIBRARY_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/Release)
+set(CMAKE_CONFIGURATION_TYPES Release Debug)
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Including mongocxx
 find_package(mongocxx REQUIRED)
@@ -39,7 +33,6 @@ if (USE_BOOST)
     include_directories(${Boost_INCLUDE_DIR})
 endif()
 
-# Other includes
-include_directories(include)
-
+# Other
+add_subdirectory(include)
 add_subdirectory(src)

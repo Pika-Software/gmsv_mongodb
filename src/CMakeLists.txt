@@ -1,5 +1,5 @@
 # Files to compile
-set(source_files
+set(SOURCES
     main.cpp
     main.h
     client.cpp
@@ -23,7 +23,8 @@ configure_file(config.h.in config.h @ONLY)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 # Adding source files to dll
-add_library(${PROJECT_NAME} SHARED ${source_files})
+add_library(${PROJECT_NAME} SHARED ${SOURCES})
+target_link_libraries(${PROJECT_NAME} PRIVATE gmod-module-base)
 
 # Including boost if found
 if (${Boost_FOUND})
@@ -31,13 +32,6 @@ if (${Boost_FOUND})
 endif()
 
 # MongoDB libraries
-target_link_libraries(${PROJECT_NAME} PRIVATE mongo::bsoncxx_shared)
-target_link_libraries(${PROJECT_NAME} PRIVATE mongo::mongocxx_shared)
+target_link_libraries(${PROJECT_NAME} PRIVATE mongo::bsoncxx_shared mongo::mongocxx_shared)
 
-# Renaming dll
-set_target_properties(${PROJECT_NAME} PROPERTIES PREFIX "")
-set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME ${output_name})
-set_target_properties(${PROJECT_NAME} PROPERTIES SUFFIX ".dll")
-
-# Compiling dll
-#install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin RENAME ${output_name})
+set_gmod_suffix_prefix(${PROJECT_NAME})

@@ -3,7 +3,7 @@
 
 //#define VERSION "1.0.0"
 #include "config.h"
-#include <GarrysMod/Lua/Interface.h>
+#include "GarrysMod/Lua/Interface.h"
 using namespace GarrysMod::Lua;
 
 namespace Global 
