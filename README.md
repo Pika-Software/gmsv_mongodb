@@ -12,8 +12,6 @@ Download the latest module for your server's operating system and architecture u
 
 ```LUA
 
--- mysqloo table
-
 Metods here
 
 ```
