@@ -2,23 +2,32 @@
 #define COLLECTION_H
 
 #include "main.h"
+#include "client.h"
+#include "pointer.h"
+#include <mongocxx/collection.hpp>
 
-namespace Collection {
-	extern int META;
+class Collection {
+public:
+	typedef SmartPointer<Collection> Ptr;
 
-	int META__GC(lua_State* L);
+	static int META;
+	mongocxx::collection coll;
+	Client::Ptr* client;
+	~Collection();
 
-	int InsertOne(lua_State* L);
-
-	int InsertMany(lua_State* L);
-
-	int FindOne(lua_State* L);
-
-	// Creating collection object
-	int Collection(lua_State* L);
-
-	// Initialization
-	void Initialize(ILuaBase* LUA);
-}
+	static Ptr* CheckSelf(Lua::ILuaBase* LUA, int iStackPos = 1);
+	static int __gc(lua_State* L);
+	static int __tostring(lua_State* L);
+	static int InsertOne(lua_State* L);
+	static int InsertMany(lua_State* L);
+	static int FindOne(lua_State* L);
+	static int Find(lua_State* L);
+	static int UpdateOne(lua_State* L);
+	static int UpdateMany(lua_State* L);
+	static int DeleteOne(lua_State* L);
+	static int DeleteMany(lua_State* L);
+	static int New(lua_State* L);
+	static void Initialize(Lua::ILuaBase* LUA);
+};
 
 #endif // COLLECTION_H

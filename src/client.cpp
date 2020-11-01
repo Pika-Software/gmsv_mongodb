@@ -1,180 +1,216 @@
 #include "client.h"
 #include "database.h"
+#include "result.h"
+#include "query.h"
 #include "bson/core.h"
 
-#include <bsoncxx/json.hpp>
+#include <thread>
+#include <queue>
+#include <system_error>
 #include <mongocxx/uri.hpp>
-#include <mongocxx/client.hpp>
-#include <mongocxx/exception/exception.hpp>
 
-namespace Client
+int Client::META;
+std::queue<Client*> clients;
+
+Client::~Client()
 {
-	int META;
+	Global::DevMsg(1, "Disconnecting from server... (or just destroying pool)\n");
 
-	// Destroying client
-	int META_GC(lua_State* L)
-	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
+	if (pool)
+		delete pool;
+}
 
-		LUA->CheckType(1, META);
-		ClientStruct* data = LUA->GetUserType<ClientStruct>(1, META);
-		if (data != nullptr && data->status != STATUS::DESTROYED && data->client != nullptr) {
-			data->status = STATUS::DESTROYED;
-			delete data->client;
-		}
+int Client::Status()
+{
+	return status.load();
+}
 
+void Client::Status(int s)
+{
+	status.store(s);
+}
+
+Client::Ptr* Client::CheckSelf(Lua::ILuaBase* LUA, int iStackPos)
+{
+	LUA->CheckType(iStackPos, META);
+	return LUA->GetUserType<Ptr>(iStackPos, META);
+}
+
+int Client::__gc(lua_State* L) noexcept
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
+
+	auto ptr = CheckSelf(LUA);
+	if (ptr)
+		ptr->free();
+
+	return 0;
+}
+
+int Client::__tostring(lua_State* L) noexcept
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
+
+	auto ptr = CheckSelf(LUA);
+	std::string out = "MongoDB Client: " + Global::PtrToStr(ptr);
+
+	LUA->PushString(out.c_str());
+	return 1;
+}
+
+int Client::New(lua_State* L) noexcept
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
+
+	auto uri = LUA->CheckString(2);
+
+	try {
+		Global::DevMsg(1, "Creating client object\n");
+		auto obj = new Client;
+		obj->pool = new mongocxx::pool{ mongocxx::uri(uri) };
+
+		LUA->PushUserType(new Ptr(obj), META);
+		return 1;
+	}
+	catch (std::system_error err) {
+		LUA->ArgError(2, "Invalid mongodb connection string!");
+		return 0;
+	}
+}
+
+int Client::Connect(lua_State* L) noexcept
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
+
+	auto ptr = CheckSelf(LUA);
+	if (!ptr) {
+		LUA->ArgError(1, "Bad client");
 		return 0;
 	}
 
-	// Returning client status. 
-	// See Client::STATUS enum.
-	int Status(lua_State* L)
-	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
-		
-		int status = STATUS::DESTROYED; // Default, client status is destroyed
-
-		LUA->CheckType(1, META);
-		ClientStruct* data = LUA->GetUserType<ClientStruct>(1, META);
-		if (data != nullptr) {
-			status = data->status;
-		}
-
-		LUA->PushNumber(status);
-		return 1;
+	int func = 0;
+	if (LUA->IsType(2, Lua::Type::Function)) {
+		LUA->Push(2);
+		func = LUA->ReferenceCreate();
 	}
 
-	// Disconnecting from server.
-	// After calling this function client destroying.
-	int Disconnect(lua_State* L)
-	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
-
-		LUA->CheckType(1, META);
-		ClientStruct* data = LUA->GetUserType<ClientStruct>(1, META);
-		if (data == nullptr || data->status == STATUS::DESTROYED || data->client == nullptr) {
-			LUA->ArgError(1, "Invalid client!");
-			return 0;
-		}
-
-		// Sorry, but i didn't found disconnect method :(
-		data->status = STATUS::DESTROYED;
-		delete data->client; // Destroying client
-
-		return 1;
-	}
-
-	// Connecting to server
-	int Connect(lua_State* L)
-	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
-
-		LUA->CheckType(1, META);
-		ClientStruct* data = LUA->GetUserType<ClientStruct>(1, META);
-		if (data == nullptr || data->status == STATUS::DESTROYED || data->client == nullptr) {
-			LUA->ArgError(1, "Invalid client!");
-			return 0;
-		}
-
-		data->status = STATUS::CONNECTING; // Maybe i do threaded version of this wrapper. But not at this version
-		try {
-			data->client->start_session();
-			data->status = STATUS::CONNECTED;
-		} catch (mongocxx::exception err) {
-			data->status = STATUS::FAILED;
-			LUA->ThrowError(err.what()); // I don't know mongodb errors :(
-			return 0;
-		}
-		
-		return 1;
-	}
-
-	// Returning list of databases on server
-	int ListDatabases(lua_State* L)
-	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
-
-		LUA->CheckType(1, META);
-		ClientStruct* data = LUA->GetUserType<ClientStruct>(1, META);
-		if (data == nullptr || data->status == STATUS::DESTROYED || data->client == nullptr) {
-			LUA->ArgError(1, "Invalid client!");
-			return 0;
-		}
+	ptr->add();
+	ptr->get()->Status(CONNECTING);
+	Query::New(LUA, [ptr, func](Lua::ILuaBase* LUA, Query* q) {
+		Result r;
+		auto obj = ptr->guard(false);
 
 		try {
-			mongocxx::cursor cur = data->client->list_databases();
+			auto c = obj->pool->acquire();
+			Global::DevMsg(1, "Connecting to the server... (uri: `%s`)\n", c->uri().to_string().c_str());
+			c->start_session();
+			obj->Status(CONNECTED);
+		}
+		catch (std::system_error err) {
+			Global::DevMsg(1, "Failed to connect. Reason: %s\n", err.what());
+			obj->Status(FAILED);
+			r.Error(err.code().value(), err.what());
+		}
 
-			LUA->CreateTable();
-			int key = 1;
+		q->Acquire(LUA, [r, func](Lua::ILuaBase* LUA) mutable {
+			r.Call(LUA, func);
+		});
+	});
+
+	return 1;
+}
+
+int Client::Status(lua_State* L) noexcept
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
+
+	auto ptr = CheckSelf(LUA);
+
+	int s = ptr ? ptr->get()->Status() : DESTROYED;
+	LUA->PushNumber(s);
+
+	return 1;
+}
+
+int Client::ListDatabases(lua_State* L) noexcept
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
+
+	auto ptr = CheckSelf(LUA);
+	if (!ptr) {
+		LUA->ArgError(1, "Bad client");
+		return 0;
+	}
+
+	int func = 0;
+	if (LUA->IsType(2, Lua::Type::Function)) {
+		LUA->Push(2);
+		func = LUA->ReferenceCreate();
+	}
+
+	ptr->add();
+	Query::New(LUA, [ptr, func](Lua::ILuaBase* LUA, Query* q) {
+		Result r;
+		auto obj = ptr->guard(false);
+		std::vector<bsoncxx::document::value> docs;
+
+		try {
+			auto c = obj->pool->acquire();
+			auto cur = c->list_databases();
+
 			for (auto&& doc : cur) {
-				LUA->PushNumber(key++);
-				
-				try {
-					BSON::Core::ParseBSON(LUA, doc);
-				} catch(mongocxx::exception err) {
-					LUA->ThrowError(err.what());
-					return 0;
-				}
+				docs.push_back(bsoncxx::document::value(doc));
+			}
+		}
+		catch (std::system_error err) {
+			r.Error(err.code().value(), err.what());
+		}
 
+		q->Acquire(LUA, [r, func, docs](Lua::ILuaBase* LUA) mutable {
+			int k = 1;
+			LUA->CreateTable();
+			for (auto&& doc : docs) {
+				LUA->PushNumber(k++);
+				BSON::Core::ParseBSON(LUA, doc.view());
 				LUA->SetTable(-3);
 			}
+			r.Data(LUA);
 
-			// cur.~cursor(); // this is crash gmod
-		} catch (mongocxx::exception err) {
-			std::string buf("Failed to get list of databases: "); // Dummy way to concat two strings
-			buf.append(err.what());
+			r.Call(LUA, func);
+		});
+	});
 
-			LUA->ThrowError(buf.c_str());
-			return 0;
-		}
+	return 1;
+}
 
-		return 1;
-	}
+void Client::Initialize(Lua::ILuaBase* LUA)
+{
+	META = LUA->CreateMetaTable("MongoDB Client");
+		LUA->Push(-1); LUA->SetField(-2, "__index");
+		LUA->PushCFunction(__tostring); LUA->SetField(-2, "__tostring");
+		LUA->PushCFunction(__gc); LUA->SetField(-2, "__gc");
+		LUA->PushCFunction(Database::New); LUA->SetField(-2, "__call");
 
-	// Creating MongoDB Client
-	int CreateClient(lua_State* L)
-	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
+		LUA->PushNumber(DISCONNECTED); LUA->SetField(-2, "STATUS_DISCONNECTED");
+		LUA->PushNumber(CONNECTING); LUA->SetField(-2, "STATUS_CONNECTING");
+		LUA->PushNumber(CONNECTED); LUA->SetField(-2, "STATUS_CONNECTED");
+		LUA->PushNumber(FAILED); LUA->SetField(-2, "STATUS_FAILED");
+		LUA->PushNumber(DESTROYED); LUA->SetField(-2, "STATUS_DESTROYED");
 
-		const char* connect_str = LUA->CheckString(1); // MongoDB Connection string
+		LUA->PushCFunction(Connect); LUA->SetField(-2, "Connect");
+		LUA->PushCFunction(Status); LUA->SetField(-2, "Status");
+		LUA->PushCFunction(ListDatabases); LUA->SetField(-2, "ListDatabases");
+		LUA->PushCFunction(Database::New); LUA->SetField(-2, "Database");
+	LUA->Pop();
+}
 
-		// Creating client
-		mongocxx::uri uri(connect_str);
-		auto client = new mongocxx::client(uri);
-
-		// Creating client structure
-		ClientStruct data;
-		data.client = client;
-		data.status = STATUS::DISCONNECTED;
-
-		LUA->PushUserType_Value(data, META);
-		return 1;
-	}
-
-	// Initialization
-	void Initialize(ILuaBase* LUA)
-	{
-		META = LUA->CreateMetaTable("MongoDB Client");
-			LUA->Push(-1); LUA->SetField(-2, "__index");
-			LUA->PushCFunction(META_GC); LUA->SetField(-2, "__gc");
-
-			LUA->PushNumber(STATUS::DISCONNECTED); LUA->SetField(-2, "STATUS_DISCONNECTED");
-			LUA->PushNumber(STATUS::CONNECTING); LUA->SetField(-2, "STATUS_CONNECTING");
-			LUA->PushNumber(STATUS::CONNECTED); LUA->SetField(-2, "STATUS_CONNECTED");
-			LUA->PushNumber(STATUS::FAILED); LUA->SetField(-2, "STATUS_FAILED");
-			LUA->PushNumber(STATUS::DESTROYED); LUA->SetField(-2, "STATUS_DESTROYED");
-
-			LUA->PushCFunction(Disconnect); LUA->SetField(-2, "Disconnect");
-			LUA->PushCFunction(Connect); LUA->SetField(-2, "Connect");
-			LUA->PushCFunction(Status); LUA->SetField(-2, "Status");
-			LUA->PushCFunction(ListDatabases); LUA->SetField(-2, "ListDatabases");
-			LUA->PushCFunction(Database::Database); LUA->SetField(-2, "Database");
-		LUA->Pop();
-	}
+void Client::Deinitialize(Lua::ILuaBase* LUA)
+{
+	Global::DevMsg(1, "Clients should be destroyed now!\n");
 }

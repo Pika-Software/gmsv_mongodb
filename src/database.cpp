@@ -1,156 +1,209 @@
 #include "database.h"
 #include "client.h"
 #include "collection.h"
+#include "result.h"
+#include "query.h"
 #include "bson/core.h"
 
-#include <mongocxx/database.hpp>
-#include <mongocxx/exception/exception.hpp>
+#include <system_error>
 
-namespace Database
+int Database::META;
+
+Database::~Database()
 {
-	int META;
+	client->free();
+}
 
-	// Destroying database
-	int META__GC(lua_State* L)
-	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
+Database::Ptr* Database::CheckSelf(Lua::ILuaBase* LUA, int iStackPos)
+{
+	LUA->CheckType(iStackPos, META);
+	return LUA->GetUserType<Ptr>(iStackPos, META);
+}
 
-		LUA->CheckType(1, META);
-		auto db = LUA->GetUserType<mongocxx::database>(1, META);
-		db->~database();
+int Database::__gc(lua_State* L)
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
 
+	auto obj = CheckSelf(LUA);
+	if (obj)
+		obj->free();
+
+	return 0;
+}
+
+int Database::__tostring(lua_State* L)
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
+
+	auto obj = CheckSelf(LUA);
+	std::string out = "MongoDB Database: " + Global::PtrToStr(obj);
+
+	LUA->PushString(out.c_str());
+	return 1;
+}
+
+int Database::Name(lua_State* L)
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
+
+	auto ptr = CheckSelf(LUA);
+	if (!ptr) {
+		LUA->ArgError(1, "Bad database object");
 		return 0;
 	}
 
-	// Returning database name
-	int Name(lua_State* L)
-	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
+	LUA->PushString(ptr->get()->db.name().data());
+	return 1;
+}
 
-		LUA->CheckType(1, META);
-		auto db = LUA->GetUserType<mongocxx::database>(1, META);
-		if (db == nullptr) {
-			LUA->ArgError(1, "Invalid database object!");
-			return 0;
-		}
+int Database::Drop(lua_State* L)
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
 
-		LUA->PushString(db->name().data());
-		return 1;
+	auto ptr = CheckSelf(LUA);
+	if (!ptr) {
+		LUA->ArgError(1, "Bad database object");
+		return 0;
 	}
 
-	// Drop database
-	int Drop(lua_State* L)
-	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
+	Result r;
+	auto obj = ptr->guard();
 
-		LUA->CheckType(1, META);
-		auto db = LUA->GetUserType<mongocxx::database>(1, META);
-		if (db == nullptr) {
-			LUA->ArgError(1, "Invalid database object!");
-			return 0;
-		}
+	try {
+		obj->db.drop();
+	}
+	catch (std::system_error err) {
+		r.Error(err.code().value(), err.what());
+	}
+
+	r.Push(LUA); r.Free(LUA);
+	return 1;
+}
+
+int Database::HasCollection(lua_State* L)
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
+
+	auto ptr = CheckSelf(LUA);
+	if (!ptr) {
+		LUA->ArgError(1, "Bad database object");
+		return 0;
+	}
+
+	auto name = LUA->CheckString(2);
+	auto obj = ptr->guard();
+	Result r;
+
+	try {
+		bool has = obj->db.has_collection(name);
+		r.data["data"] = has;
+	}
+	catch (std::system_error err) {
+		r.Error(err.code().value(), err.what());
+	}
+
+	r.Push(LUA); r.Free(LUA);
+	return 1;
+}
+
+int Database::ListCollections(lua_State* L)
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
+
+	auto ptr = CheckSelf(LUA);
+	if (!ptr) {
+		LUA->ArgError(1, "Bad client");
+		return 0;
+	}
+
+	int func = 0;
+	if (LUA->IsType(2, Lua::Type::Function)) {
+		LUA->Push(2);
+		func = LUA->ReferenceCreate();
+	}
+
+	ptr->add();
+	Query::New(LUA, [ptr, func](Lua::ILuaBase* LUA, Query* q) {
+		Result r;
+		auto obj = ptr->guard(false);
+		std::vector<bsoncxx::document::value> docs;
 
 		try {
-			db->drop();
-		} catch (mongocxx::exception err) {
-			LUA->ThrowError(err.what());
-			return 0;
-		}
+			auto cur = obj->db.list_collections();
 
-		return 1;
-	}
-
-	// Check if database has collection
-	int HasCollection(lua_State* L)
-	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
-
-		LUA->CheckType(1, META);
-		auto db = LUA->GetUserType<mongocxx::database>(1, META);
-		if (db == nullptr) {
-			LUA->ArgError(1, "Invalid database object!");
-			return 0;
-		}
-
-		const char* name = LUA->CheckString(2);
-
-		try {
-			bool has = db->has_collection(name);
-			LUA->PushBool(has);
-		} catch (mongocxx::exception err) {
-			LUA->ThrowError(err.what());
-			return 0;
-		}
-
-		return 1;
-	}
-
-	// Returning list of collections in database
-	int ListCollections(lua_State* L)
-	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
-
-		LUA->CheckType(1, META);
-		auto db = LUA->GetUserType<mongocxx::database>(1, META);
-		if (db == nullptr) {
-			LUA->ArgError(1, "Invalid database object!");
-			return 0;
-		}
-
-		mongocxx::cursor cur = db->list_collections();
-		LUA->CreateTable();
-		int key = 1;
-		for (auto&& doc : cur) {
-			LUA->PushNumber(key++);
-			try {
-				BSON::Core::ParseBSON(LUA, doc);
-			} catch(mongocxx::exception err) {
-				LUA->ThrowError(err.what());
-				return 0;
+			for (auto&& doc : cur) {
+				docs.push_back(bsoncxx::document::value(doc));
 			}
-			LUA->SetTable(-3);
+		}
+		catch (std::system_error err) {
+			r.Error(err.code().value(), err.what());
 		}
 
-		return 1;
+		q->Acquire(LUA, [r, func, docs](Lua::ILuaBase* LUA) mutable {
+			int k = 1;
+			LUA->CreateTable();
+			for (auto&& doc : docs) {
+				LUA->PushNumber(k++);
+				BSON::Core::ParseBSON(LUA, doc.view());
+				LUA->SetTable(-3);
+			}
+			r.Data(LUA);
+
+			r.Call(LUA, func);
+		});
+	});
+
+	return 1;
+}
+
+int Database::New(lua_State* L)
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
+	
+	auto client = Client::CheckSelf(LUA);
+	if (!client) {
+		LUA->ArgError(1, "Bad client");
+		return 0;
 	}
 
-	// Creating database object.
-	int Database(lua_State* L)
+	const char* name = LUA->CheckString(2);
+	if (std::string(name).empty()) {
+		LUA->ArgError(2, "Empty database name");
+		return 0;
+	}
+
+	client->add();
+
+	auto obj = new Database;
+	obj->client = client;
+	
 	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
-
-		LUA->CheckType(1, Client::META);
-		Client::ClientStruct* data = LUA->GetUserType<Client::ClientStruct>(1, Client::META);
-		if (data == nullptr || data->status == Client::STATUS::DESTROYED || data->client == nullptr) {
-			LUA->ArgError(1, "Invalid client!");
-			return 0;
-		}
-
-		const char* db_name = LUA->CheckString(2);
-		auto db = data->client->database(db_name);
-
-		LUA->PushUserType_Value(db, META);
-		return 1;
+		auto c = client->get()->pool->acquire();
+		obj->db = c->database(name);
 	}
 
-	// Initialization
-	void Initialize(ILuaBase* LUA)
-	{
-		META = LUA->CreateMetaTable("MongoDB Database");
-			LUA->Push(-1); LUA->SetField(-2, "__index");
-			LUA->PushCFunction(META__GC); LUA->SetField(-2, "__gc");
-			
-			LUA->PushCFunction(Name); LUA->SetField(-2, "Name");
-			LUA->PushCFunction(Drop); LUA->SetField(-2, "Drop");
-			LUA->PushCFunction(HasCollection); LUA->SetField(-2, "HasCollection");
-			LUA->PushCFunction(ListCollections); LUA->SetField(-2, "ListCollections");
-			LUA->PushCFunction(Collection::Collection); LUA->SetField(-2, "Collection");
-		LUA->Pop();
-	}
+	LUA->PushUserType(new Ptr(obj), META);
+	return 1;
+}
+
+void Database::Initialize(Lua::ILuaBase* LUA)
+{
+	META = LUA->CreateMetaTable("MongoDB Database");
+		LUA->Push(-1); LUA->SetField(-2, "__index");
+		LUA->PushCFunction(__gc); LUA->SetField(-2, "__gc");
+		LUA->PushCFunction(Collection::New); LUA->SetField(-2, "__call");
+
+		LUA->PushCFunction(Name); LUA->SetField(-2, "Name");
+		LUA->PushCFunction(Drop); LUA->SetField(-2, "Drop");
+		LUA->PushCFunction(HasCollection); LUA->SetField(-2, "HasCollection");
+		LUA->PushCFunction(ListCollections); LUA->SetField(-2, "ListCollections");
+		LUA->PushCFunction(Collection::New); LUA->SetField(-2, "Collection");
+	LUA->Pop();
 }

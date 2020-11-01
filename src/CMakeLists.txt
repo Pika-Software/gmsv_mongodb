@@ -12,17 +12,21 @@ set(SOURCES
     bson/core.h
     bson/types.cpp
     bson/types.h
-    #bson/types/document.cpp # Maybe i will use it.
-    #bson/types/document.h
     bson/types/oid.cpp
     bson/types/oid.h
-)
+    result.h 
+    result.cpp
+    query.h 
+    query.cpp
+    pointer.h
+   )
 
 # Generating configure file
-configure_file(config.h.in config.h @ONLY)
+configure_file(config.h.in config.h)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
+
 target_link_libraries(${PROJECT_NAME} PRIVATE gmod-module-base)
 set_gmod_suffix_prefix(${PROJECT_NAME})
 

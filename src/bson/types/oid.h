@@ -3,30 +3,30 @@
 
 #include "../../main.h"
 #include "../core.h"
-#include <bsoncxx/types/bson_value/view.hpp>
+#include <bsoncxx/oid.hpp>
 
 namespace BSON
 {
-	namespace Types
+	namespace Type
 	{
-		namespace ObjectID
-		{
-			extern int META;
+		extern int META_OBJECTID;
 
-			struct ObjectIdStruct {
-				bsoncxx::types::bson_value::view oid;
-			};
+		class ObjectID {
+		public:
+			bsoncxx::oid oid;
 
-			std::string StreamBytesToHex(const char* bytes, int size);
+			static std::string BytesToHex(const char* bytes, int size);
+			static ObjectID* CheckSelf(Lua::ILuaBase* LUA, int iStackPos = 1);
+			static int __gc(lua_State* L);
+			static int __tostring(lua_State* L);
+			static int Value(lua_State* L);
+			static int IsValid(lua_State* L);
+			static int New(lua_State* L);
+			static void New(Lua::ILuaBase* LUA, bsoncxx::types::bson_value::view oid);
+			static void New(Lua::ILuaBase* LUA, bsoncxx::oid oid);
 
-			int META__TOSTRING(lua_State* L);
-
-			int Value(lua_State* L);
-
-			void New(ILuaBase* LUA, bsoncxx::types::bson_value::view oid);
-
-			void Initialize(ILuaBase* LUA);
-		}
+			static void Initialize(Lua::ILuaBase* LUA);
+		};
 	}
 }
 

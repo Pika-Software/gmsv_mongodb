@@ -4,7 +4,7 @@ if(POLICY CMP0025)
     cmake_policy(SET CMP0025 NEW)
 endif()
 
-project(gmsv_mongodb VERSION 1.0.0 LANGUAGES CXX)
+project(gmsv_mongodb VERSION 2.0.0 LANGUAGES CXX)
 
 # Enforce the C++ standard, and disable extensions.
 if(NOT DEFINED CMAKE_CXX_STANDARD)
@@ -23,7 +23,7 @@ find_package(libmongocxx-static REQUIRED)
 find_package(libbsoncxx-static REQUIRED)
 
 # Variables
-set(VERSION "1.0.0")
+set(VERSION ${PROJECT_VERSION})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/Debug)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/Release)
 set(CMAKE_RUNTIME_LIBRARY_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/Debug)

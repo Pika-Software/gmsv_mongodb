@@ -1,14 +1,17 @@
 #ifndef CLIENT_H
 #define CLIENT_H
 
+#include "pointer.h"
 #include "main.h"
 
 #include <mongocxx/client.hpp>
+#include <mongocxx/pool.hpp>
 
-namespace Client 
-{
-	extern int META;
+class Client {
+public:
+	typedef SmartPointer<Client> Ptr;
 
+	static int META;
 	enum STATUS {
 		DISCONNECTED = 1,
 		CONNECTING = 2,
@@ -17,33 +20,23 @@ namespace Client
 		DESTROYED = 5,
 	};
 
-	struct ClientStruct {
-		mongocxx::client* client;
-		int status;
-	};
+	std::atomic<int> status = DISCONNECTED;
+	mongocxx::pool* pool;
 
-	// Destroying client
-	int META_GC(lua_State* L);
+	~Client();
+	int Status(); // Get status
+	void Status(int s); // Set status
 
-	// Returning client status. 
-	// See Client::STATUS enum.
-	int Status(lua_State* L);
+	static Ptr* CheckSelf(Lua::ILuaBase* LUA, int iStackPos = 1);
+	static int __tostring(lua_State* L) noexcept;
+	static int __gc(lua_State* L) noexcept;
+	static int New(lua_State* L) noexcept;
+	static int Connect(lua_State* L) noexcept;
+	static int Status(lua_State* L) noexcept;
+	static int ListDatabases(lua_State* L) noexcept;
 
-	// Disconnecting from server.
-	// After calling this function client destroying.
-	int Disconnect(lua_State* L);
-
-	// Connecting to server
-	int Connect(lua_State* L);
-
-	// Returning list of databases on server
-	int ListDatabases(lua_State* L);
-
-	// Creating MongoDB Client
-	int CreateClient(lua_State* L);
-
-	// Initialization
-	void Initialize(ILuaBase* LUA);
-}
+	static void Initialize(Lua::ILuaBase* LUA);
+	static void Deinitialize(Lua::ILuaBase* LUA);
+};
 
 #endif // CLIENT_H

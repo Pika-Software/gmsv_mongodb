@@ -3,21 +3,15 @@
 
 #include "../main.h"
 
-//#include "types/document.h"
+#include <bsoncxx/types/bson_value/view.hpp>
 #include "types/oid.h"
 
 namespace BSON
 {
-	namespace Types
-	{
-		enum Type {
-			oid = 1,
-			document = 2,
-		};
-
-		// Initialization
-		void Initialize(ILuaBase* LUA);
-	}
+	class Types {
+	public:
+		static void Initialize(Lua::ILuaBase* LUA);
+	};
 }
 
 #endif // BSON_TYPES_H

@@ -2,13 +2,8 @@
 
 namespace BSON
 {
-	namespace Types
+	void Types::Initialize(Lua::ILuaBase* LUA)
 	{
-		// Initialization
-		void Initialize(ILuaBase* LUA)
-		{
-			//Document::Initialize(LUA);
-			ObjectID::Initialize(LUA);
-		}
+		Type::ObjectID::Initialize(LUA);
 	}
 }

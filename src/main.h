@@ -1,23 +1,33 @@
 #ifndef MAIN_H
 #define MAIN_H
 
-//#define VERSION "1.0.0"
+#include <string>
 #include "config.h"
 #include "GarrysMod/Lua/Interface.h"
-using namespace GarrysMod::Lua;
 
-namespace Global 
-{
+using namespace GarrysMod;
+
+class Global {
+public:
+	static constexpr const char* DEVMSG_PREFIX = "[MongoDB Debug] ";
+
+	static void LoadEngine();
+
+	static void DevMsg(int level, const char* pMsg, ...);
+
 	// Running global function
 	// On the top stack should be arguments
 	// This function don't pop arguments from stack. You should do this manually
-	void Run(ILuaBase* LUA, const char* func, int iArgs, int iResults);
+	static void Run(Lua::ILuaBase* LUA, const char* func, int iArgs, int iResults);
+
+	static void Print(Lua::ILuaBase* LUA, const char* message);
+
+	// Converting pointer address to string
+	static std::string PtrToStr(const void* addr);
 
 	// Garry's mod initialization
-	int Initialize(ILuaBase* LUA);
-
-	// Shutdown
-	//int Deinitialize(ILuaBase* LUA);
-}
+	static int Initialize(Lua::ILuaBase* LUA);
+	static int Deinitialize(Lua::ILuaBase* LUA);
+};
 
 #endif // MAIN_H

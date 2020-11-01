@@ -1,455 +1,457 @@
 #include "collection.h"
 #include "database.h"
+#include "query.h"
+#include "result.h"
 #include "bson/core.h"
 
 #include <vector>
-#include <mongocxx/stdx.hpp>
-#include <mongocxx/database.hpp>
-#include <mongocxx/collection.hpp>
+#include <system_error>
+#include <bsoncxx/json.hpp>
+//#include <mongocxx/stdx.hpp>
 
+int Collection::META;
 
-#include <mongocxx/exception/bulk_write_exception.hpp>
-#include <mongocxx/exception/query_exception.hpp>
-#include <mongocxx/exception/logic_error.hpp>
-
-namespace Collection 
+Collection::~Collection()
 {
-	int META;
+	client->free();
+}
 
-	int META__GC(lua_State* L)
-	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
+Collection::Ptr* Collection::CheckSelf(Lua::ILuaBase* LUA, int iStackPos)
+{
+	LUA->CheckType(iStackPos, META);
+	return LUA->GetUserType<Ptr>(iStackPos, META);
+}
 
-		LUA->CheckType(1, META);
-		auto coll = LUA->GetUserType<mongocxx::collection>(1, META);
+int Collection::__gc(lua_State* L) 
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
 
-		if (coll != nullptr)
-			coll->~collection();
+	auto ptr = CheckSelf(LUA);
+	if (ptr)
+		ptr->free();
 
+	return 0;
+}
+
+int Collection::__tostring(lua_State* L)
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
+
+	auto ptr = CheckSelf(LUA);
+	std::string out = "MongoDB Collection: " + Global::PtrToStr(ptr);
+
+	LUA->PushString(out.c_str());
+	return 1;
+}
+
+int Collection::InsertOne(lua_State* L)
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
+
+	auto ptr = CheckSelf(LUA);
+	if (!ptr) {
+		LUA->ArgError(1, "Bad collection object");
 		return 0;
 	}
 
-	int InsertOne(lua_State* L)
-	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
+	LUA->CheckType(2, Lua::Type::Table);
+	auto doc = BSON::Core::ParseTable(LUA, 2);
 
-		LUA->CheckType(1, META);
-		auto coll = LUA->GetUserType<mongocxx::collection>(1, META);
-		if (coll == nullptr) {
-			LUA->ArgError(1, "Invalid collection object!");
-			return 0;
-		}
-
-		LUA->CheckType(2, Type::Table);
-		auto doc = BSON::Core::ParseTable(LUA, 2);
-
-		mongocxx::stdx::optional<mongocxx::result::insert_one> result;
-		try {
-			result = coll->insert_one(doc.view());
-		}
-		catch (mongocxx::bulk_write_exception err) {
-			LUA->ThrowError(err.what());
-			return 0;
-		}
-
-		if (result) {
-			auto val = result.value();
-			auto oid = val.inserted_id();
-
-			LUA->CreateTable();
-			BSON::Types::ObjectID::New(LUA, oid); LUA->SetField(-2, "id");
-		}
-		else {
-			LUA->PushNil();
-		}
-
-		return 1;
+	int func = 0;
+	if (LUA->IsType(3, Lua::Type::Function)) {
+		LUA->Push(3);
+		func = LUA->ReferenceCreate();
 	}
 
-	int InsertMany(lua_State* L)
-	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
-
-		int args = LUA->Top() - 1;
-
-		LUA->CheckType(1, META);
-		auto coll = LUA->GetUserType<mongocxx::collection>(1, META);
-		if (coll == nullptr) {
-			LUA->ArgError(1, "Invalid collection object!");
-			return 0;
-		}
-
-		LUA->CheckType(2, Type::Table);
-
-		std::vector<bsoncxx::document::value> docs;
-		for (int i = 0; i < args; i++) {
-			LUA->CheckType(2, Type::Table);
-			auto doc = BSON::Core::ParseTable(LUA, 2 + i);
-			docs.push_back(doc);
-		}
-
-		mongocxx::stdx::optional<mongocxx::result::insert_many> result;
-		try {
-			result = coll->insert_many(docs);
-		}
-		catch (mongocxx::bulk_write_exception err) {
-			LUA->ThrowError(err.what());
-			return 0;
-		}
-
-		if (result) {
-			auto val = result.value();
-			auto id_map = val.inserted_ids();
-			
-			LUA->CreateTable();
-			LUA->PushNumber(val.inserted_count()); LUA->SetField(-2, "inserted_count");
-			LUA->CreateTable();
-				int k = 1;
-				for (auto it = id_map.begin(); it != id_map.end(); it++) {
-					auto el = it->second;
-					LUA->PushNumber(k++);
-					BSON::Types::ObjectID::New(LUA, el.get_value());
-					LUA->SetTable(-3);
-				}
-			LUA->SetField(-2, "id_list");
-		}
-		else {
-			LUA->PushNil();
-		}
-
-		return 1;
-	}
-
-	int FindOne(lua_State* L)
-	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
-
-		LUA->CheckType(1, META);
-		auto coll = LUA->GetUserType<mongocxx::collection>(1, META);
-		if (coll == nullptr) {
-			LUA->ArgError(1, "Invalid collection object!");
-			return 0;
-		}
-
-		LUA->CheckType(2, Type::Table);
-		auto doc = BSON::Core::ParseTable(LUA, 2);
-
-		mongocxx::stdx::optional<bsoncxx::document::value> result;
-		try {
-			result = coll->find_one(doc.view());
-		}
-		catch (mongocxx::query_exception err) {
-			LUA->ThrowError(err.what());
-			return 0;
-		}
-
-		if (result) {
-			auto val = result.value();
-				try {
-					BSON::Core::ParseBSON(LUA, val.view());
-				} catch(mongocxx::exception err) {
-					LUA->ThrowError(err.what());
-					return 0;
-				}
-		}
-		else {
-			LUA->PushNil();
-		}
-
-		return 1;
-	}
-
-	int Find(lua_State* L)
-	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
-
-		LUA->CheckType(1, META);
-		auto coll = LUA->GetUserType<mongocxx::collection>(1, META);
-		if (coll == nullptr) {
-			LUA->ArgError(1, "Invalid collection object!");
-			return 0;
-		}
-
-		LUA->CheckType(2, Type::Table);
-		auto doc = BSON::Core::ParseTable(LUA, 2);
+	ptr->add();
+	Query::New(LUA, [ptr, doc, func](Lua::ILuaBase* LUA, Query* q) {
+		auto obj = ptr->guard(false);
+		Result r;
 
 		try {
-			auto cur = coll->find(doc.view());
-
-			LUA->CreateTable();
-			int k = 1;
-			for (auto doc : cur) {
-				LUA->PushNumber(k++);
-				try {
-					BSON::Core::ParseBSON(LUA, doc);
-				} catch(mongocxx::exception err) {
-					LUA->ThrowError(err.what());
-					return 0;
-				}
-				LUA->SetTable(-3);
-			}
+			auto res = obj->coll.insert_one(doc.view());
+			if (res)
+				r.SetResult(res.value());
 		}
-		catch (mongocxx::query_exception err) {
-			LUA->ThrowError(err.what());
-			return 0;
+		catch (std::system_error err) {
+			r.Error(err.code().value(), err.what());
 		}
 
-		return 1;
+		q->Acquire(LUA, [r, func](Lua::ILuaBase* LUA) mutable {
+			r.Call(LUA, func);
+		});
+	});
+
+	return 1;
+}
+
+int Collection::InsertMany(lua_State* L)
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
+
+	auto ptr = CheckSelf(LUA);
+	if (!ptr) {
+		LUA->ArgError(1, "Bad collection object");
+		return 0;
 	}
 
-	int UpdateOne(lua_State* L)
-	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
-
-		LUA->CheckType(1, META);
-		auto coll = LUA->GetUserType<mongocxx::collection>(1, META);
-		if (coll == nullptr) {
-			LUA->ArgError(1, "Invalid collection object!");
-			return 0;
-		}
-
-		LUA->CheckType(2, Type::Table);
-		LUA->CheckType(3, Type::Table);
-
-		auto filter = BSON::Core::ParseTable(LUA, 2);
-		auto update = BSON::Core::ParseTable(LUA, 3);
-
-		mongocxx::stdx::optional<mongocxx::result::update> result;
-		try {
-			result = coll->update_one(filter.view(), update.view());
-		}
-		catch (mongocxx::logic_error err) {
-			LUA->ThrowError(err.what());
-			return 0;
-		}
-		catch (mongocxx::bulk_write_exception err) {
-			LUA->ThrowError(err.what());
-			return 0;
-		}
-
-		if (result) {
-			auto val = result.value();
-			auto id = val.upserted_id();
-
-			LUA->CreateTable();
-			LUA->PushNumber(val.matched_count()); LUA->SetField(-2, "matched_count");
-			LUA->PushNumber(val.modified_count()); LUA->SetField(-2, "modified_count");
-			if (id) {
-				auto el = &id.value();
-				BSON::Types::ObjectID::New(LUA, el->get_value()); LUA->SetField(-2, "id");
-			}
-		}
-		else {
-			LUA->PushNil();
-		}
-
-		return 1;
-	}
-
-	int UpdateMany(lua_State* L)
-	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
-
-		LUA->CheckType(1, META);
-		auto coll = LUA->GetUserType<mongocxx::collection>(1, META);
-		if (coll == nullptr) {
-			LUA->ArgError(1, "Invalid collection object!");
-			return 0;
-		}
-
-		LUA->CheckType(2, Type::Table);
-		LUA->CheckType(3, Type::Table);
-
-		auto filter = BSON::Core::ParseTable(LUA, 2);
-		auto update = BSON::Core::ParseTable(LUA, 3);
-
-		mongocxx::stdx::optional<mongocxx::result::update> result;
-		try {
-			result = coll->update_many(filter.view(), update.view());
-		}
-		catch (mongocxx::logic_error err) {
-			LUA->ThrowError(err.what());
-			return 0;
-		}
-		catch (mongocxx::bulk_write_exception err) {
-			LUA->ThrowError(err.what());
-			return 0;
-		}
-
-		if (result) {
-			auto val = result.value();
-			auto id = val.upserted_id();
-
-			LUA->CreateTable();
-			LUA->PushNumber(val.matched_count()); LUA->SetField(-2, "matched_count");
-			LUA->PushNumber(val.modified_count()); LUA->SetField(-2, "modified_count");
-			if (id) {
-				auto el = &id.value();
-				BSON::Types::ObjectID::New(LUA, el->get_value()); LUA->SetField(-2, "id");
-			}
-		}
-		else {
-			LUA->PushNil();
-		}
-
-		return 1;
-	}
-
-	int DeleteOne(lua_State* L) 
-	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
-
-		LUA->CheckType(1, META);
-		auto coll = LUA->GetUserType<mongocxx::collection>(1, META);
-		if (coll == nullptr) {
-			LUA->ArgError(1, "Invalid collection object!");
-			return 0;
-		}
-
-		LUA->CheckType(2, Type::Table);
-		auto doc = BSON::Core::ParseTable(LUA, 2);
-
-		mongocxx::stdx::optional<mongocxx::result::delete_result> result;
-		try {
-			result = coll->delete_one(doc.view());
-		}
-		catch (mongocxx::bulk_write_exception err) {
-			LUA->ThrowError(err.what());
-			return 0;
-		}
-
-		if (result) {
-			auto val = result.value();
-
-			LUA->CreateTable();
-			LUA->PushNumber(val.deleted_count()); LUA->SetField(-2, "deleted_count");
-		}
-		else {
-			LUA->PushNil();
-		}
-
-		return 1;
-	}
-
-	int DeleteMany(lua_State* L)
-	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
-
-		LUA->CheckType(1, META);
-		auto coll = LUA->GetUserType<mongocxx::collection>(1, META);
-		if (coll == nullptr) {
-			LUA->ArgError(1, "Invalid collection object!");
-			return 0;
-		}
-
-		LUA->CheckType(2, Type::Table);
-		auto doc = BSON::Core::ParseTable(LUA, 2);
-
-		mongocxx::stdx::optional<mongocxx::result::delete_result> result;
-		try {
-			result = coll->delete_many(doc.view());
-		}
-		catch (mongocxx::bulk_write_exception err) {
-			LUA->ThrowError(err.what());
-			return 0;
-		}
-
-		if (result) {
-			auto val = result.value();
-
-			LUA->CreateTable();
-			LUA->PushNumber(val.deleted_count()); LUA->SetField(-2, "deleted_count");
-		}
-		else {
-			LUA->PushNil();
-		}
-
-		return 1;
-	}
-
-
-	int CreateIndex(lua_State* L)
-	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
-
-		LUA->CheckType(1, META);
-		auto coll = LUA->GetUserType<mongocxx::collection>(1, META);
-		if (coll == nullptr) {
-			LUA->ArgError(1, "Invalid collection object!");
-			return 0;
-		}
-
-		LUA->CheckType(2, Type::Table);
-		auto keys = BSON::Core::ParseTable(LUA, 2);
-
-		bsoncxx::document::value options = bsoncxx::builder::basic::document().extract();
-		if (LUA->IsType(3, Type::Table))
-			options = BSON::Core::ParseTable(LUA, 3);
-
-		try {
-			auto doc = coll->create_index(keys.view(), options.view());
-				try {
-					BSON::Core::ParseBSON(LUA, doc.view());
-				} catch(mongocxx::exception err) {
-					LUA->ThrowError(err.what());
-					return 0;
-				}
-		}
-		catch (mongocxx::operation_exception err) {
-			LUA->ThrowError(err.what());
-			return 0;
-		}
-
-		return 1;
-	}
-
-	// Creating collection object
-	int Collection(lua_State* L)
-	{
-		ILuaBase* LUA = L->luabase;
-		LUA->SetState(L);
-
-
-		LUA->CheckType(1, Database::META);
-		auto db = LUA->GetUserType<mongocxx::database>(1, Database::META);
-		if (db == nullptr) {
-			LUA->ArgError(1, "Invalid database object!");
-			return 0;
-		}
-
-		const char* name = LUA->CheckString(2);
-		mongocxx::collection coll = db->collection(name);
-
-		LUA->PushUserType_Value(coll, META);
-		return 1;
-	}
-
-	// Initialization
-	void Initialize(ILuaBase* LUA)
-	{
-		META = LUA->CreateMetaTable("MongoDB Collection");
-			LUA->Push(-1); LUA->SetField(-2, "__index");
-			LUA->PushCFunction(META__GC); LUA->SetField(-2, "__gc");
-
-			LUA->PushCFunction(InsertOne); LUA->SetField(-2, "InsertOne");
-			LUA->PushCFunction(InsertMany); LUA->SetField(-2, "InsertMany");
-			LUA->PushCFunction(FindOne); LUA->SetField(-2, "FindOne");
-			LUA->PushCFunction(Find); LUA->SetField(-2, "Find");
-			LUA->PushCFunction(UpdateOne); LUA->SetField(-2, "UpdateOne");
-			LUA->PushCFunction(UpdateMany); LUA->SetField(-2, "UpdateMany");
-			LUA->PushCFunction(DeleteOne); LUA->SetField(-2, "DeleteOne");
-			LUA->PushCFunction(DeleteMany); LUA->SetField(-2, "DeleteMany");
-			LUA->PushCFunction(CreateIndex); LUA->SetField(-2, "CreateIndex");
+	LUA->CheckType(2, Lua::Type::Table);
+	std::vector<bsoncxx::document::value> docs;
+	LUA->PushNil();
+	while (LUA->Next(2)) {
+		docs.push_back(BSON::Core::ParseTable(LUA, -1));
 		LUA->Pop();
 	}
+
+	int func = 0;
+	if (LUA->IsType(3, Lua::Type::Function)) {
+		LUA->Push(3);
+		func = LUA->ReferenceCreate();
+	}
+
+	ptr->add();
+	Query::New(LUA, [ptr, docs, func](Lua::ILuaBase* LUA, Query* q) {
+		auto obj = ptr->guard(false);
+		Result r;
+
+		try {
+			auto res = obj->coll.insert_many(docs);
+			if (res)
+				r.SetResult(res.value());
+		}
+		catch (std::system_error err) {
+			r.Error(err.code().value(), err.what());
+		}
+
+		q->Acquire(LUA, [r, func](Lua::ILuaBase* LUA) mutable {
+			r.Call(LUA, func);
+		});
+	});
+
+	return 1;
+}
+
+int Collection::FindOne(lua_State* L)
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
+
+	auto ptr = CheckSelf(LUA);
+	if (!ptr) {
+		LUA->ArgError(1, "Bad collection object");
+		return 0;
+	}
+
+	LUA->CheckType(2, Lua::Type::Table);
+	auto filter = BSON::Core::ParseTable(LUA, 2);
+
+	int func = 0;
+	if (LUA->IsType(3, Lua::Type::Function)) {
+		LUA->Push(3);
+		func = LUA->ReferenceCreate();
+	}
+
+	ptr->add();
+	Query::New(LUA, [ptr, filter, func](Lua::ILuaBase* LUA, Query* q) {
+		bsoncxx::stdx::optional<bsoncxx::document::value> doc;
+		auto obj = ptr->guard(false);
+		Result r;
+
+		try {
+			doc = obj->coll.find_one(filter.view());
+		}
+		catch (std::system_error err) {
+			r.Error(err.code().value(), err.what());
+		}
+
+		q->Acquire(LUA, [r, doc, func](Lua::ILuaBase* LUA) mutable {
+			if (doc) {
+				BSON::Core::ParseBSON(LUA, doc.value());
+				r.Data(LUA);
+			}
+
+			r.Call(LUA, func);
+		});
+	});
+
+	return 1;
+}
+
+int Collection::Find(lua_State* L)
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
+
+	auto ptr = CheckSelf(LUA);
+	if (!ptr) {
+		LUA->ArgError(1, "Bad collection object");
+		return 0;
+	}
+
+	LUA->CheckType(2, Lua::Type::Table);
+	auto filter = BSON::Core::ParseTable(LUA, 2);
+
+	int func = 0;
+	if (LUA->IsType(3, Lua::Type::Function)) {
+		LUA->Push(3);
+		func = LUA->ReferenceCreate();
+	}
+
+	ptr->add();
+	Query::New(LUA, [ptr, filter, func](Lua::ILuaBase* LUA, Query* q) {
+		std::vector<bsoncxx::document::value> docs;
+		auto obj = ptr->guard(false);
+		Result r;
+
+		try {
+			auto cur = obj->coll.find(filter.view());
+			for (auto&& doc : cur) {
+				docs.emplace_back(doc);
+			}
+		}
+		catch (std::system_error err) {
+			r.Error(err.code().value(), err.what());
+		}
+
+		q->Acquire(LUA, [r, docs, func](Lua::ILuaBase* LUA) mutable {
+			if (!docs.empty()) {
+				int k = 1;
+				LUA->CreateTable();
+				for (auto&& doc : docs) {
+					LUA->PushNumber(k++);
+					BSON::Core::ParseBSON(LUA, doc.view());
+					LUA->SetTable(-3);
+				}
+
+				r.Data(LUA);
+			}
+
+			r.Call(LUA, func);
+		});
+	});
+
+	return 1;
+}
+
+int Collection::UpdateOne(lua_State* L)
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
+
+	auto ptr = CheckSelf(LUA);
+	if (!ptr) {
+		LUA->ArgError(1, "Bad collection object");
+		return 0;
+	}
+
+	LUA->CheckType(2, Lua::Type::Table);
+	auto filter = BSON::Core::ParseTable(LUA, 2);
+
+	LUA->CheckType(3, Lua::Type::Table);
+	auto update = BSON::Core::ParseTable(LUA, 3);
+
+	int func = 0;
+	if (LUA->IsType(4, Lua::Type::Function)) {
+		LUA->Push(4);
+		func = LUA->ReferenceCreate();
+	}
+
+	ptr->add();
+	Query::New(LUA, [ptr, filter, update, func](Lua::ILuaBase* LUA, Query* q) {
+		auto obj = ptr->guard(false);
+		Result r;
+
+		try {
+			auto res = obj->coll.update_one(filter.view(), update.view());
+			if (res)
+				r.SetResult(res.value());
+		}
+		catch (std::system_error err) {
+			r.Error(err.code().value(), err.what());
+		}
+
+		q->Acquire(LUA, [r, func](Lua::ILuaBase* LUA) mutable {
+			r.Call(LUA, func);
+			});
+		});
+
+	return 1;
+}
+
+int Collection::UpdateMany(lua_State* L)
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
+
+	auto ptr = CheckSelf(LUA);
+	if (!ptr) {
+		LUA->ArgError(1, "Bad collection object");
+		return 0;
+	}
+
+	LUA->CheckType(2, Lua::Type::Table);
+	auto filter = BSON::Core::ParseTable(LUA, 2);
+
+	LUA->CheckType(3, Lua::Type::Table);
+	auto update = BSON::Core::ParseTable(LUA, 3);
+
+	int func = 0;
+	if (LUA->IsType(4, Lua::Type::Function)) {
+		LUA->Push(4);
+		func = LUA->ReferenceCreate();
+	}
+
+	ptr->add();
+	Query::New(LUA, [ptr, filter, update, func](Lua::ILuaBase* LUA, Query* q) {
+		auto obj = ptr->guard(false);
+		Result r;
+
+		try {
+			auto res = obj->coll.update_many(filter.view(), update.view());
+			if (res)
+				r.SetResult(res.value());
+		}
+		catch (std::system_error err) {
+			r.Error(err.code().value(), err.what());
+		}
+
+		q->Acquire(LUA, [r, func](Lua::ILuaBase* LUA) mutable {
+			r.Call(LUA, func);
+		});
+	});
+
+	return 1;
+}
+
+int Collection::DeleteOne(lua_State* L)
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
+
+	auto ptr = CheckSelf(LUA);
+	if (!ptr) {
+		LUA->ArgError(1, "Bad collection object");
+		return 0;
+	}
+
+	LUA->CheckType(2, Lua::Type::Table);
+	auto filter = BSON::Core::ParseTable(LUA, 2);
+
+	int func = 0;
+	if (LUA->IsType(3, Lua::Type::Function)) {
+		LUA->Push(3);
+		func = LUA->ReferenceCreate();
+	}
+
+	ptr->add();
+	Query::New(LUA, [ptr, filter, func](Lua::ILuaBase* LUA, Query* q) {
+		auto obj = ptr->guard(false);
+		Result r;
+
+		try {
+			auto res = obj->coll.delete_one(filter.view());
+			if (res)
+				r.SetResult(res.value());
+		}
+		catch (std::system_error err) {
+			r.Error(err.code().value(), err.what());
+		}
+
+		q->Acquire(LUA, [r, func](Lua::ILuaBase* LUA) mutable {
+			r.Call(LUA, func);
+		});
+	});
+
+	return 1;
+}
+
+int Collection::DeleteMany(lua_State* L)
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
+
+	auto ptr = CheckSelf(LUA);
+	if (!ptr) {
+		LUA->ArgError(1, "Bad collection object");
+		return 0;
+	}
+
+	LUA->CheckType(2, Lua::Type::Table);
+	auto filter = BSON::Core::ParseTable(LUA, 2);
+
+	int func = 0;
+	if (LUA->IsType(3, Lua::Type::Function)) {
+		LUA->Push(3);
+		func = LUA->ReferenceCreate();
+	}
+
+	ptr->add();
+	Query::New(LUA, [ptr, filter, func](Lua::ILuaBase* LUA, Query* q) {
+		auto obj = ptr->guard(false);
+		Result r;
+
+		try {
+			auto res = obj->coll.delete_many(filter.view());
+			if (res)
+				r.SetResult(res.value());
+		}
+		catch (std::system_error err) {
+			r.Error(err.code().value(), err.what());
+		}
+
+		q->Acquire(LUA, [r, func](Lua::ILuaBase* LUA) mutable {
+			r.Call(LUA, func);
+			});
+		});
+
+	return 1;
+}
+
+int Collection::New(lua_State* L)
+{
+	Lua::ILuaBase* LUA = L->luabase;
+	LUA->SetState(L);
+
+	auto ptr = Database::CheckSelf(LUA);
+	if (!ptr) {
+		LUA->ArgError(1, "Bad database object");
+		return 0;
+	}
+
+	const char* name = LUA->CheckString(2);
+	if (std::string(name).empty()) {
+		LUA->ArgError(2, "Empty collection name");
+		return 0;
+	}
+
+	ptr->add();
+	auto db = ptr->get();
+	auto obj = new Collection;
+	obj->client = db->client;
+	obj->coll = db->db.collection(name);
+
+	LUA->PushUserType(new Ptr(obj), META);
+	return 1;
+}
+
+void Collection::Initialize(Lua::ILuaBase* LUA)
+{
+	META = LUA->CreateMetaTable("MongoDB Collection");
+		LUA->Push(-1); LUA->SetField(-2, "__index");
+		LUA->PushCFunction(__tostring); LUA->SetField(-2, "__tostring");
+		LUA->PushCFunction(__gc); LUA->SetField(-2, "__gc");
+
+		LUA->PushCFunction(InsertOne); LUA->SetField(-2, "InsertOne");
+		LUA->PushCFunction(InsertMany); LUA->SetField(-2, "InsertMany");
+		LUA->PushCFunction(FindOne); LUA->SetField(-2, "FindOne");
+		LUA->PushCFunction(Find); LUA->SetField(-2, "Find");
+		LUA->PushCFunction(UpdateOne); LUA->SetField(-2, "UpdateOne");
+		LUA->PushCFunction(UpdateMany); LUA->SetField(-2, "UpdateMany");
+		LUA->PushCFunction(DeleteOne); LUA->SetField(-2, "DeleteOne");
+		LUA->PushCFunction(DeleteMany); LUA->SetField(-2, "DeleteMany");
+	LUA->Pop();
 }
