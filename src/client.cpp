@@ -70,6 +70,7 @@ int Client::New(lua_State* L) noexcept
 	try {
 		Global::DevMsg(1, "Creating client object\n");
 		auto obj = new Client;
+		obj->status.store(DISCONNECTED);
 		obj->pool = new mongocxx::pool{ mongocxx::uri(uri) };
 
 		LUA->PushUserType(new Ptr(obj), META);

@@ -4,6 +4,7 @@
 #include "pointer.h"
 #include "main.h"
 
+#include <atomic>
 #include <mongocxx/client.hpp>
 #include <mongocxx/pool.hpp>
 
@@ -20,7 +21,7 @@ public:
 		DESTROYED = 5,
 	};
 
-	std::atomic<int> status = DISCONNECTED;
+	std::atomic_int status;
 	mongocxx::pool* pool;
 
 	~Client();

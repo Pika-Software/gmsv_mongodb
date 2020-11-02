@@ -13,10 +13,10 @@
 
 #ifdef WIN32
 #include <Windows.h>
-#endif
 
 typedef void(__stdcall *f_DevMsg)(int level, const char* pMsg, ...);
 f_DevMsg iDevMsg;
+#endif
 
 int Test(lua_State* L)
 {
@@ -52,6 +52,7 @@ void Global::LoadEngine()
 
 void Global::DevMsg(int level, const char* pMsg, ...)
 {
+#ifdef WIN32
 	if (iDevMsg) {
 		char str[255];
 
@@ -62,6 +63,7 @@ void Global::DevMsg(int level, const char* pMsg, ...)
 		iDevMsg(level, (std::string(DEVMSG_PREFIX) + str).c_str());
 		va_end(args);
 	}
+#endif
 }
 
 void Global::Run(Lua::ILuaBase* LUA, const char* func, int iArgs, int iResults)

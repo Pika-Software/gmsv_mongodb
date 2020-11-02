@@ -91,7 +91,7 @@ namespace BSON
 			auto id = LUA->CheckString(1);
 
 			try {
-				auto oid = bsoncxx::oid::oid(id);
+				auto oid = bsoncxx::oid(id);
 				New(LUA, oid);
 			}
 			catch (std::system_error err) {

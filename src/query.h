@@ -48,4 +48,4 @@ public:
 	static void Initialize(Lua::ILuaBase* LUA);
 };
 
-#endif QUERY_H
+#endif // QUERY_H
