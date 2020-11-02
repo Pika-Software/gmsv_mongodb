@@ -1,5 +1,7 @@
 # MongoDB Wrapper for Garry's mod
 Simple MongoDB Wrapper for Garry's mod
+
+**DOCUMENTATION IS OUTDATED!**
 ## Table of contents
 * [Features](#features)
 * [Requirements](#requirements)
