@@ -14,7 +14,7 @@ std::queue<Client*> clients;
 
 Client::~Client()
 {
-	Global::DevMsg(1, "Disconnecting from server... (or just destroying pool)\n");
+	DevMsg(1, "Disconnecting from server... (or just destroying pool)\n");
 
 	if (pool)
 		delete pool;
@@ -65,13 +65,14 @@ int Client::New(lua_State* L) noexcept
 	Lua::ILuaBase* LUA = L->luabase;
 	LUA->SetState(L);
 
-	auto uri = LUA->CheckString(2);
+	auto uristr = LUA->CheckString(2);
 
 	try {
-		Global::DevMsg(1, "Creating client object\n");
+		DevMsg(2, "Creating client object\n");
+
 		auto obj = new Client;
 		obj->status.store(DISCONNECTED);
-		obj->pool = new mongocxx::pool{ mongocxx::uri(uri) };
+		obj->pool = new mongocxx::pool{ mongocxx::uri(uristr) };
 
 		LUA->PushUserType(new Ptr(obj), META);
 		return 1;
@@ -101,23 +102,23 @@ int Client::Connect(lua_State* L) noexcept
 
 	ptr->add();
 	ptr->get()->Status(CONNECTING);
-	Query::New(LUA, [ptr, func](Lua::ILuaBase* LUA, Query* q) {
+	Query::New(LUA, [ptr, func](Query* q) {
 		Result r;
 		auto obj = ptr->guard(false);
 
 		try {
 			auto c = obj->pool->acquire();
-			Global::DevMsg(1, "Connecting to the server... (uri: `%s`)\n", c->uri().to_string().c_str());
+			DevMsg(1, "Connecting to the server... (uri: `%s`)\n", c->uri().to_string().c_str());
 			c->start_session();
 			obj->Status(CONNECTED);
 		}
 		catch (std::system_error err) {
-			Global::DevMsg(1, "Failed to connect. Reason: %s\n", err.what());
+			DevMsg(1, "Failed to connect. Reason: %s\n", err.what());
 			obj->Status(FAILED);
 			r.Error(err.code().value(), err.what());
 		}
 
-		q->Acquire(LUA, [r, func](Lua::ILuaBase* LUA) mutable {
+		q->Acquire([r, func](Lua::ILuaBase* LUA) mutable {
 			r.Call(LUA, func);
 		});
 	});
@@ -156,7 +157,7 @@ int Client::ListDatabases(lua_State* L) noexcept
 	}
 
 	ptr->add();
-	Query::New(LUA, [ptr, func](Lua::ILuaBase* LUA, Query* q) {
+	Query::New(LUA, [ptr, func](Query* q) {
 		Result r;
 		auto obj = ptr->guard(false);
 		std::vector<bsoncxx::document::value> docs;
@@ -173,7 +174,7 @@ int Client::ListDatabases(lua_State* L) noexcept
 			r.Error(err.code().value(), err.what());
 		}
 
-		q->Acquire(LUA, [r, func, docs](Lua::ILuaBase* LUA) mutable {
+		q->Acquire([r, func, docs](Lua::ILuaBase* LUA) mutable {
 			int k = 1;
 			LUA->CreateTable();
 			for (auto&& doc : docs) {
@@ -213,5 +214,5 @@ void Client::Initialize(Lua::ILuaBase* LUA)
 
 void Client::Deinitialize(Lua::ILuaBase* LUA)
 {
-	Global::DevMsg(1, "Clients should be destroyed now!\n");
+	DevMsg(1, "Clients should be destroyed now!\n");
 }

@@ -4,13 +4,35 @@
 #include "main.h"
 #include <string>
 #include <map>
+#include <queue>
 #include <mongocxx/result/insert_one.hpp>
 #include <mongocxx/result/insert_many.hpp>
 #include <mongocxx/result/update.hpp>
 #include <mongocxx/result/delete.hpp>
+#include <mongocxx/options/insert.hpp>
+#include <mongocxx/options/find.hpp>
+#include <mongocxx/options/update.hpp>
+#include <mongocxx/options/delete.hpp>
 
 class Result {
 public:
+	class DebugStack {
+	public:
+		struct Info {
+			const char* name;
+			const char* short_src;
+			int currentline;
+			std::string to_string();
+		};
+
+		std::queue<Info> stack;
+
+		DebugStack(Lua::ILuaBase* LUA);
+		optional<Info> get_info(Lua::ILuaBase* LUA, int stack);
+		static optional<Info> get_info_func(Lua::ILuaBase* LUA, int iRef);
+		std::string BuildStack(Lua::ILuaBase* LUA);
+	};
+
 	enum Types {
 		k_bool = 0,
 		k_number = 1,
@@ -65,6 +87,13 @@ public:
 	void SetResult(const mongocxx::result::update& result);
 	void SetResult(const mongocxx::result::delete_result& result);
 	void Call(Lua::ILuaBase* LUA, int iFunc);
+	void Call(Lua::ILuaBase* LUA, int iFunc, DebugStack& stack);
+
+	static bool KeyValue(Lua::ILuaBase* LUA, const char* key, const char* expectedKey, int valueType, int valuePos = -1);
+	static void ParseOptions(Lua::ILuaBase* LUA, int iStackPos, mongocxx::options::insert &options);
+	static void ParseOptions(Lua::ILuaBase* LUA, int iStackPos, mongocxx::options::find &options);
+	static void ParseOptions(Lua::ILuaBase* LUA, int iStackPos, mongocxx::options::update &options);
+	static void ParseOptions(Lua::ILuaBase* LUA, int iStackPos, mongocxx::options::delete_options &options);
 };
 
 #endif // RESULT_H

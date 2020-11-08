@@ -4,6 +4,7 @@
 #include "main.h"
 #include "client.h"
 #include "pointer.h"
+#include <mutex>
 #include <mongocxx/collection.hpp>
 
 class Collection {
@@ -13,6 +14,7 @@ public:
 	static int META;
 	mongocxx::collection coll;
 	Client::Ptr* client;
+	std::mutex mtx;
 	~Collection();
 
 	static Ptr* CheckSelf(Lua::ILuaBase* LUA, int iStackPos = 1);
