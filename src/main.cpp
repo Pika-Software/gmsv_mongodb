@@ -24,14 +24,6 @@ int Test(lua_State* L)
 	Lua::ILuaBase* LUA = L->luabase;
 	LUA->SetState(L);
 
-	// auto lambda = [](Lua::ILuaBase* LUA, Query* q) {
-	// 	std::this_thread::sleep_for(std::chrono::milliseconds(5000));
-	// 	q->Acquire(LUA, [](Lua::ILuaBase* LUA) {
-	// 		LUA->PushString("WOW!"); Global::Run(LUA, "print", 1, 0);
-	// 	});
-	// };
-	
-	// Query::New(LUA, lambda);
 	return 1;
 }
 

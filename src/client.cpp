@@ -22,12 +22,12 @@ Client::~Client()
 
 int Client::Status()
 {
-	return status.load();
+	return status;
 }
 
 void Client::Status(int s)
 {
-	status.store(s);
+	status = s;
 }
 
 Client::Ptr* Client::CheckSelf(Lua::ILuaBase* LUA, int iStackPos)
@@ -42,6 +42,7 @@ int Client::__gc(lua_State* L) noexcept
 	LUA->SetState(L);
 
 	auto ptr = CheckSelf(LUA);
+	DevMsg(1, (std::string() + "Client destroyed: " + Global::PtrToStr(ptr) + '\n').c_str());
 	if (ptr)
 		ptr->free();
 
@@ -71,7 +72,6 @@ int Client::New(lua_State* L) noexcept
 		DevMsg(2, "Creating client object\n");
 
 		auto obj = new Client;
-		obj->status.store(DISCONNECTED);
 		obj->pool = new mongocxx::pool{ mongocxx::uri(uristr) };
 
 		LUA->PushUserType(new Ptr(obj), META);

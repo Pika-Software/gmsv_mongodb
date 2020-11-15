@@ -7,7 +7,6 @@
 #include <vector>
 #include <system_error>
 #include <bsoncxx/json.hpp>
-//#include <mongocxx/stdx.hpp>
 
 int Collection::META;
 
@@ -80,7 +79,6 @@ int Collection::InsertOne(lua_State* L)
 		Result r;
 
 		try {
-			std::lock_guard<std::mutex> guard(obj->mtx);
 			auto res = obj->coll.insert_one(doc.view(), options);
 			if (res)
 				r.SetResult(res.value());
@@ -136,7 +134,6 @@ int Collection::InsertMany(lua_State* L)
 		Result r;
 
 		try {
-			std::lock_guard<std::mutex> guard(obj->mtx);
 			auto res = obj->coll.insert_many(docs, options);
 			if (res)
 				r.SetResult(res.value());
@@ -188,7 +185,6 @@ int Collection::FindOne(lua_State* L)
 		Result r;
 
 		try {
-			std::lock_guard<std::mutex> guard(obj->mtx);
 			doc = obj->coll.find_one(filter.view(), options);
 		}
 		catch (std::system_error err) {
@@ -242,7 +238,6 @@ int Collection::Find(lua_State* L)
 		Result r;
 
 		try {
-			std::lock_guard<std::mutex> guard(obj->mtx);
 			auto cur = obj->coll.find(filter.view(), options);
 			for (auto&& doc : cur) {
 				docs.emplace_back(doc);
@@ -309,7 +304,6 @@ int Collection::UpdateOne(lua_State* L)
 		Result r;
 
 		try {
-			std::lock_guard<std::mutex> guard(obj->mtx);
 			auto res = obj->coll.update_one(filter.view(), update.view(), options);
 			if (res)
 				r.SetResult(res.value());
@@ -363,7 +357,6 @@ int Collection::UpdateMany(lua_State* L)
 		Result r;
 
 		try {
-			std::lock_guard<std::mutex> guard(obj->mtx);
 			auto res = obj->coll.update_many(filter.view(), update.view(), options);
 			if (res)
 				r.SetResult(res.value());
@@ -414,7 +407,6 @@ int Collection::DeleteOne(lua_State* L)
 		Result r;
 
 		try {
-			std::lock_guard<std::mutex> guard(obj->mtx);
 			auto res = obj->coll.delete_one(filter.view(), options);
 			if (res)
 				r.SetResult(res.value());
@@ -465,7 +457,6 @@ int Collection::DeleteMany(lua_State* L)
 		Result r;
 
 		try {
-			std::lock_guard<std::mutex> guard(obj->mtx);
 			auto res = obj->coll.delete_many(filter.view(), options);
 			if (res)
 				r.SetResult(res.value());
@@ -498,11 +489,11 @@ int Collection::New(lua_State* L)
 		return 0;
 	}
 
-	ptr->add();
 	auto db = ptr->get();
 	auto obj = new Collection;
 	obj->client = db->client;
 	obj->coll = db->db.collection(name);
+	obj->client->add();
 
 	LUA->PushUserType(new Ptr(obj), META);
 	return 1;

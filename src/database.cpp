@@ -188,7 +188,7 @@ int Database::New(lua_State* L)
 		auto c = client->get()->pool->acquire();
 		obj->db = c->database(name);
 	}
-
+	
 	LUA->PushUserType(new Ptr(obj), META);
 	return 1;
 }

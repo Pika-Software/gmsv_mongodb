@@ -14,7 +14,6 @@ public:
 	static int META;
 	mongocxx::collection coll;
 	Client::Ptr* client;
-	std::mutex mtx;
 	~Collection();
 
 	static Ptr* CheckSelf(Lua::ILuaBase* LUA, int iStackPos = 1);
