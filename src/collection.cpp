@@ -7,7 +7,6 @@
 #include <vector>
 #include <system_error>
 #include <bsoncxx/json.hpp>
-//#include <mongocxx/stdx.hpp>
 
 int Collection::META;
 
@@ -60,19 +59,27 @@ int Collection::InsertOne(lua_State* L)
 	LUA->CheckType(2, Lua::Type::Table);
 	auto doc = BSON::Core::ParseTable(LUA, 2);
 
+	mongocxx::options::insert options;
+	if (LUA->IsType(3, Lua::Type::Table)) 
+		Result::ParseOptions(LUA, 3, options);
+
 	int func = 0;
 	if (LUA->IsType(3, Lua::Type::Function)) {
 		LUA->Push(3);
 		func = LUA->ReferenceCreate();
+	} else if (LUA->IsType(4, Lua::Type::Function)) {
+		LUA->Push(4);
+		func = LUA->ReferenceCreate();
 	}
 
 	ptr->add();
-	Query::New(LUA, [ptr, doc, func](Lua::ILuaBase* LUA, Query* q) {
+	Result::DebugStack s(LUA);
+	Query::New(LUA, [ptr, s, doc, options, func](Query* q) mutable {
 		auto obj = ptr->guard(false);
 		Result r;
 
 		try {
-			auto res = obj->coll.insert_one(doc.view());
+			auto res = obj->coll.insert_one(doc.view(), options);
 			if (res)
 				r.SetResult(res.value());
 		}
@@ -80,8 +87,8 @@ int Collection::InsertOne(lua_State* L)
 			r.Error(err.code().value(), err.what());
 		}
 
-		q->Acquire(LUA, [r, func](Lua::ILuaBase* LUA) mutable {
-			r.Call(LUA, func);
+		q->Acquire([r, s, func](Lua::ILuaBase* LUA) mutable {
+			r.Call(LUA, func, s);
 		});
 	});
 
@@ -107,19 +114,27 @@ int Collection::InsertMany(lua_State* L)
 		LUA->Pop();
 	}
 
+	mongocxx::options::insert options;
+	if (LUA->IsType(3, Lua::Type::Table)) 
+		Result::ParseOptions(LUA, 3, options);
+
 	int func = 0;
 	if (LUA->IsType(3, Lua::Type::Function)) {
 		LUA->Push(3);
 		func = LUA->ReferenceCreate();
+	} else if (LUA->IsType(4, Lua::Type::Function)) {
+		LUA->Push(4);
+		func = LUA->ReferenceCreate();
 	}
 
 	ptr->add();
-	Query::New(LUA, [ptr, docs, func](Lua::ILuaBase* LUA, Query* q) {
+	Result::DebugStack s(LUA);
+	Query::New(LUA, [ptr, s, docs, options, func](Query* q) mutable {
 		auto obj = ptr->guard(false);
 		Result r;
 
 		try {
-			auto res = obj->coll.insert_many(docs);
+			auto res = obj->coll.insert_many(docs, options);
 			if (res)
 				r.SetResult(res.value());
 		}
@@ -127,8 +142,8 @@ int Collection::InsertMany(lua_State* L)
 			r.Error(err.code().value(), err.what());
 		}
 
-		q->Acquire(LUA, [r, func](Lua::ILuaBase* LUA) mutable {
-			r.Call(LUA, func);
+		q->Acquire([r, s, func](Lua::ILuaBase* LUA) mutable {
+			r.Call(LUA, func, s);
 		});
 	});
 
@@ -149,35 +164,42 @@ int Collection::FindOne(lua_State* L)
 	LUA->CheckType(2, Lua::Type::Table);
 	auto filter = BSON::Core::ParseTable(LUA, 2);
 
+	mongocxx::options::find options;
+	if (LUA->IsType(3, Lua::Type::Table)) 
+		Result::ParseOptions(LUA, 3, options);
+
 	int func = 0;
 	if (LUA->IsType(3, Lua::Type::Function)) {
 		LUA->Push(3);
 		func = LUA->ReferenceCreate();
+	} else if (LUA->IsType(4, Lua::Type::Function)) {
+		LUA->Push(4);
+		func = LUA->ReferenceCreate();
 	}
 
 	ptr->add();
-	Query::New(LUA, [ptr, filter, func](Lua::ILuaBase* LUA, Query* q) {
+	Result::DebugStack s(LUA);
+	Query::New(LUA, [ptr, s, filter, options, func](Query* q) mutable {
 		bsoncxx::stdx::optional<bsoncxx::document::value> doc;
 		auto obj = ptr->guard(false);
 		Result r;
 
 		try {
-			doc = obj->coll.find_one(filter.view());
+			doc = obj->coll.find_one(filter.view(), options);
 		}
 		catch (std::system_error err) {
 			r.Error(err.code().value(), err.what());
 		}
 
-		q->Acquire(LUA, [r, doc, func](Lua::ILuaBase* LUA) mutable {
+		q->Acquire([r, s, doc, func](Lua::ILuaBase* LUA) mutable {
 			if (doc) {
 				BSON::Core::ParseBSON(LUA, doc.value());
 				r.Data(LUA);
 			}
 
-			r.Call(LUA, func);
+			r.Call(LUA, func, s);
 		});
 	});
-
 	return 1;
 }
 
@@ -195,20 +217,28 @@ int Collection::Find(lua_State* L)
 	LUA->CheckType(2, Lua::Type::Table);
 	auto filter = BSON::Core::ParseTable(LUA, 2);
 
+	mongocxx::options::find options;
+	if (LUA->IsType(3, Lua::Type::Table)) 
+		Result::ParseOptions(LUA, 3, options);
+
 	int func = 0;
 	if (LUA->IsType(3, Lua::Type::Function)) {
 		LUA->Push(3);
 		func = LUA->ReferenceCreate();
+	} else if (LUA->IsType(4, Lua::Type::Function)) {
+		LUA->Push(4);
+		func = LUA->ReferenceCreate();
 	}
 
 	ptr->add();
-	Query::New(LUA, [ptr, filter, func](Lua::ILuaBase* LUA, Query* q) {
+	Result::DebugStack s(LUA);
+	Query::New(LUA, [ptr, s, filter, options, func](Query* q) mutable {
 		std::vector<bsoncxx::document::value> docs;
 		auto obj = ptr->guard(false);
 		Result r;
 
 		try {
-			auto cur = obj->coll.find(filter.view());
+			auto cur = obj->coll.find(filter.view(), options);
 			for (auto&& doc : cur) {
 				docs.emplace_back(doc);
 			}
@@ -217,7 +247,7 @@ int Collection::Find(lua_State* L)
 			r.Error(err.code().value(), err.what());
 		}
 
-		q->Acquire(LUA, [r, docs, func](Lua::ILuaBase* LUA) mutable {
+		q->Acquire([r, s, docs, func](Lua::ILuaBase* LUA) mutable {
 			if (!docs.empty()) {
 				int k = 1;
 				LUA->CreateTable();
@@ -230,7 +260,7 @@ int Collection::Find(lua_State* L)
 				r.Data(LUA);
 			}
 
-			r.Call(LUA, func);
+			r.Call(LUA, func, s);
 		});
 	});
 
@@ -254,19 +284,27 @@ int Collection::UpdateOne(lua_State* L)
 	LUA->CheckType(3, Lua::Type::Table);
 	auto update = BSON::Core::ParseTable(LUA, 3);
 
+	mongocxx::options::update options;
+	if (LUA->IsType(4, Lua::Type::Table)) 
+		Result::ParseOptions(LUA, 4, options);
+
 	int func = 0;
 	if (LUA->IsType(4, Lua::Type::Function)) {
 		LUA->Push(4);
 		func = LUA->ReferenceCreate();
+	} else if (LUA->IsType(5, Lua::Type::Function)) {
+		LUA->Push(5);
+		func = LUA->ReferenceCreate();
 	}
 
 	ptr->add();
-	Query::New(LUA, [ptr, filter, update, func](Lua::ILuaBase* LUA, Query* q) {
+	Result::DebugStack s(LUA);
+	Query::New(LUA, [ptr, s, filter, update, options, func](Query* q) mutable {
 		auto obj = ptr->guard(false);
 		Result r;
 
 		try {
-			auto res = obj->coll.update_one(filter.view(), update.view());
+			auto res = obj->coll.update_one(filter.view(), update.view(), options);
 			if (res)
 				r.SetResult(res.value());
 		}
@@ -274,10 +312,10 @@ int Collection::UpdateOne(lua_State* L)
 			r.Error(err.code().value(), err.what());
 		}
 
-		q->Acquire(LUA, [r, func](Lua::ILuaBase* LUA) mutable {
-			r.Call(LUA, func);
-			});
+		q->Acquire([r, s, func](Lua::ILuaBase* LUA) mutable {
+			r.Call(LUA, func, s);
 		});
+	});
 
 	return 1;
 }
@@ -299,19 +337,27 @@ int Collection::UpdateMany(lua_State* L)
 	LUA->CheckType(3, Lua::Type::Table);
 	auto update = BSON::Core::ParseTable(LUA, 3);
 
+	mongocxx::options::update options;
+	if (LUA->IsType(4, Lua::Type::Table)) 
+		Result::ParseOptions(LUA, 4, options);
+
 	int func = 0;
 	if (LUA->IsType(4, Lua::Type::Function)) {
 		LUA->Push(4);
 		func = LUA->ReferenceCreate();
+	} else if (LUA->IsType(5, Lua::Type::Function)) {
+		LUA->Push(5);
+		func = LUA->ReferenceCreate();
 	}
 
 	ptr->add();
-	Query::New(LUA, [ptr, filter, update, func](Lua::ILuaBase* LUA, Query* q) {
+	Result::DebugStack s(LUA);
+	Query::New(LUA, [ptr, s, filter, update, options, func](Query* q) mutable {
 		auto obj = ptr->guard(false);
 		Result r;
 
 		try {
-			auto res = obj->coll.update_many(filter.view(), update.view());
+			auto res = obj->coll.update_many(filter.view(), update.view(), options);
 			if (res)
 				r.SetResult(res.value());
 		}
@@ -319,8 +365,8 @@ int Collection::UpdateMany(lua_State* L)
 			r.Error(err.code().value(), err.what());
 		}
 
-		q->Acquire(LUA, [r, func](Lua::ILuaBase* LUA) mutable {
-			r.Call(LUA, func);
+		q->Acquire([r, s, func](Lua::ILuaBase* LUA) mutable {
+			r.Call(LUA, func, s);
 		});
 	});
 
@@ -341,19 +387,27 @@ int Collection::DeleteOne(lua_State* L)
 	LUA->CheckType(2, Lua::Type::Table);
 	auto filter = BSON::Core::ParseTable(LUA, 2);
 
+	mongocxx::options::delete_options options;
+	if (LUA->IsType(3, Lua::Type::Table)) 
+		Result::ParseOptions(LUA, 3, options);
+
 	int func = 0;
 	if (LUA->IsType(3, Lua::Type::Function)) {
 		LUA->Push(3);
 		func = LUA->ReferenceCreate();
+	} else if (LUA->IsType(4, Lua::Type::Function)) {
+		LUA->Push(4);
+		func = LUA->ReferenceCreate();
 	}
 
 	ptr->add();
-	Query::New(LUA, [ptr, filter, func](Lua::ILuaBase* LUA, Query* q) {
+	Result::DebugStack s(LUA);
+	Query::New(LUA, [ptr, s, filter, options, func](Query* q) mutable {
 		auto obj = ptr->guard(false);
 		Result r;
 
 		try {
-			auto res = obj->coll.delete_one(filter.view());
+			auto res = obj->coll.delete_one(filter.view(), options);
 			if (res)
 				r.SetResult(res.value());
 		}
@@ -361,8 +415,8 @@ int Collection::DeleteOne(lua_State* L)
 			r.Error(err.code().value(), err.what());
 		}
 
-		q->Acquire(LUA, [r, func](Lua::ILuaBase* LUA) mutable {
-			r.Call(LUA, func);
+		q->Acquire([r, s, func](Lua::ILuaBase* LUA) mutable {
+			r.Call(LUA, func, s);
 		});
 	});
 
@@ -383,19 +437,27 @@ int Collection::DeleteMany(lua_State* L)
 	LUA->CheckType(2, Lua::Type::Table);
 	auto filter = BSON::Core::ParseTable(LUA, 2);
 
+	mongocxx::options::delete_options options;
+	if (LUA->IsType(3, Lua::Type::Table)) 
+		Result::ParseOptions(LUA, 3, options);
+
 	int func = 0;
 	if (LUA->IsType(3, Lua::Type::Function)) {
 		LUA->Push(3);
 		func = LUA->ReferenceCreate();
+	} else if (LUA->IsType(4, Lua::Type::Function)) {
+		LUA->Push(4);
+		func = LUA->ReferenceCreate();
 	}
 
 	ptr->add();
-	Query::New(LUA, [ptr, filter, func](Lua::ILuaBase* LUA, Query* q) {
+	Result::DebugStack s(LUA);
+	Query::New(LUA, [ptr, s, filter, options, func](Query* q) mutable {
 		auto obj = ptr->guard(false);
 		Result r;
 
 		try {
-			auto res = obj->coll.delete_many(filter.view());
+			auto res = obj->coll.delete_many(filter.view(), options);
 			if (res)
 				r.SetResult(res.value());
 		}
@@ -403,11 +465,10 @@ int Collection::DeleteMany(lua_State* L)
 			r.Error(err.code().value(), err.what());
 		}
 
-		q->Acquire(LUA, [r, func](Lua::ILuaBase* LUA) mutable {
-			r.Call(LUA, func);
-			});
+		q->Acquire([r, s, func](Lua::ILuaBase* LUA) mutable {
+			r.Call(LUA, func, s);
 		});
-
+	});
 	return 1;
 }
 
@@ -428,11 +489,11 @@ int Collection::New(lua_State* L)
 		return 0;
 	}
 
-	ptr->add();
 	auto db = ptr->get();
 	auto obj = new Collection;
 	obj->client = db->client;
 	obj->coll = db->db.collection(name);
+	obj->client->add();
 
 	LUA->PushUserType(new Ptr(obj), META);
 	return 1;

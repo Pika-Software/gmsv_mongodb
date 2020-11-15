@@ -4,7 +4,7 @@ if(POLICY CMP0025)
     cmake_policy(SET CMP0025 NEW)
 endif()
 
-project(gmsv_mongodb VERSION 2.0.0 LANGUAGES CXX)
+project(gmsv_mongodb VERSION 2.1.0 LANGUAGES CXX)
 
 # Enforce the C++ standard, and disable extensions.
 if(NOT DEFINED CMAKE_CXX_STANDARD)

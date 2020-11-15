@@ -3,49 +3,45 @@
 #ifndef QUERY_H
 #define QUERY_H
 
-#include "client.h"
 #include "main.h"
+#include "pointer.h"
 
-#include <condition_variable>
-#include <atomic>
-#include <thread>
 #include <mutex>
-#include <deque>
-
-class Query;
-
-typedef std::function<void(Lua::ILuaBase* LUA, Query* q)> QueryThreadFunc;
-typedef std::function<void(Lua::ILuaBase* LUA)> QueryFunc;
-
-struct QueryData {
-	bool done = false;
-	std::mutex mtx;
-	std::condition_variable cv;
-	bool isDone() { return done; };
-};
+#include <condition_variable>
+#include <queue>
+#include <functional>
 
 class Query {
+	std::function<void(Query*)> m_func;
+	std::mutex m_mtx;
+	std::condition_variable m_cvar;
+	bool m_sync = false;
+	bool m_done = false;
+	Lua::ILuaBase* lua_object; 
 public:
+	static int __gc(lua_State* L);
+	void Acquire(std::function<void(Lua::ILuaBase*)> func);
+
 	static int META;
 
-	static std::mutex ListMutex;
-	static std::deque<QueryData*> DataList;
-	static std::deque<std::pair<Query*, QueryData*>> RemoveList;
+	static std::mutex LuaMutex;
+	static std::queue<std::function<void(Lua::ILuaBase*)>> LuaQueue;
 
-	std::mutex m_mutex;
-	std::condition_variable m_cvar;
-	bool m_done = false;
-	bool m_sync = false;
+	//static std::mutex ThreadMutex;
+	//static std::condition_variable ThreadCVar;
+	//static bool ThreadStopped;
+	//static std::queue<SmartPointer<Query>*> ThreadQueue;
+	//static std::promise<SmartPointer<Query>*> ThreadPromise;
+	//static std::future<SmartPointer<Query>*> ThreadFuture;
 
-	void Acquire(Lua::ILuaBase* LUA, QueryFunc func);
-	bool isUnblocked();
-
-	static void New(Lua::ILuaBase* LUA, QueryThreadFunc func);
-	static Query* CheckSelf(Lua::ILuaBase* LUA, int iStackPos = 1);
-	static int __tostring(lua_State* L);
+	static void New(Lua::ILuaBase* LUA, std::function<void(Query*)> func);
 	static int Wait(lua_State* L);
+
+	//static void ThreadFunc();
 	static int Think(lua_State* L);
+
 	static void Initialize(Lua::ILuaBase* LUA);
+	static void Deinitialize();
 };
 
 #endif // QUERY_H

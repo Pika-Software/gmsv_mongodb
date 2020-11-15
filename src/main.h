@@ -2,18 +2,27 @@
 #define MAIN_H
 
 #include <string>
+#include <bsoncxx/stdx/optional.hpp>
 #include "config.h"
 #include "GarrysMod/Lua/Interface.h"
 
 using namespace GarrysMod;
+using bsoncxx::stdx::optional;
+using bsoncxx::stdx::make_optional;
+
+#ifdef WIN32
+typedef void(__stdcall *f_DevMsg)(int level, const char* pMsg, ...);
+#elif __linux
+typedef void(*f_DevMsg)(int level, const char* pMsg, ...);
+#endif
+
+extern f_DevMsg DevMsg;
 
 class Global {
 public:
 	static constexpr const char* DEVMSG_PREFIX = "[MongoDB Debug] ";
 
 	static void LoadEngine();
-
-	static void DevMsg(int level, const char* pMsg, ...);
 
 	// Running global function
 	// On the top stack should be arguments

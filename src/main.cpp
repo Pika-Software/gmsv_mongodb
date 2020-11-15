@@ -13,24 +13,17 @@
 
 #ifdef WIN32
 #include <Windows.h>
-
-typedef void(__stdcall *f_DevMsg)(int level, const char* pMsg, ...);
-f_DevMsg iDevMsg;
+#elif __linux__
+#include <dlfcn.h>
 #endif
+
+f_DevMsg DevMsg;
 
 int Test(lua_State* L)
 {
 	Lua::ILuaBase* LUA = L->luabase;
 	LUA->SetState(L);
 
-	auto lambda = [](Lua::ILuaBase* LUA, Query* q) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(5000));
-		q->Acquire(LUA, [](Lua::ILuaBase* LUA) {
-			LUA->PushString("WOW!"); Global::Run(LUA, "print", 1, 0);
-		});
-	};
-	
-	Query::New(LUA, lambda);
 	return 1;
 }
 
@@ -40,29 +33,29 @@ void Global::LoadEngine()
 	HINSTANCE hGetProcIDDLL = LoadLibrary("tier0.dll");
 
 	if (!hGetProcIDDLL)
-		return;
+		abort();
 
 	f_DevMsg func = (f_DevMsg)GetProcAddress(hGetProcIDDLL, "DevMsg");
 	if (!func)
-		return;
+		abort();
 
-	iDevMsg = func;
-#endif
-}
+	DevMsg = func;
+#elif __linux__
+	void *HANDLE;
 
-void Global::DevMsg(int level, const char* pMsg, ...)
-{
-#ifdef WIN32
-	if (iDevMsg) {
-		char str[255];
-
-		va_list args;
-		va_start(args, pMsg);
-		vsprintf_s(str, pMsg, args);
-
-		iDevMsg(level, (std::string(DEVMSG_PREFIX) + str).c_str());
-		va_end(args);
+	HANDLE = dlopen("libtier0_srv.so", RTLD_LAZY);
+	if (!HANDLE) 
+	{
+		HANDLE = dlopen("libtier0.so", RTLD_LAZY);
+		if (!HANDLE)
+			abort();
 	}
+
+	f_DevMsg fn = (f_DevMsg)dlsym(HANDLE, "DevMsg");
+	if (dlerror() != NULL)  
+		abort();
+
+	DevMsg = fn;
 #endif
 }
 
@@ -131,6 +124,7 @@ int Global::Deinitialize(Lua::ILuaBase* LUA)
 {
 	DevMsg(1, "Unloading MongoDB...\n");
 	Client::Deinitialize(LUA);
+	Query::Deinitialize();
 
 	return 0;
 }

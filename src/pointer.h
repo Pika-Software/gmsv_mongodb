@@ -23,7 +23,7 @@ public:
 
 	~SmartPointer() 
 	{
-		Global::DevMsg(1, "Deleting pointer...\n");
+		DevMsg(4, "Deleting pointer...\n");
 		delete ptr;
 		ptr = nullptr;
 	}
@@ -60,14 +60,14 @@ class SmartGuard {
 	SmartPointer<T>* sptr;
 public:
 	SmartGuard(SmartPointer<T>* smart_pointer, bool add_counter = true) {
-		Global::DevMsg(1, "New guard: %p\n", this);
+		DevMsg(4, "New guard: %p\n", this);
 		sptr = smart_pointer;
 		if (add_counter)
 			sptr->add();
 	}
 
 	~SmartGuard() {
-		Global::DevMsg(1, "Guard destroy: %p\n", this);
+		DevMsg(4, "Guard destroy: %p\n", this);
 		sptr->free();
 	}
 

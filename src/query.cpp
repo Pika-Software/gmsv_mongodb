@@ -1,169 +1,177 @@
 // WARNING! SHITCODE!
 #include "query.h"
 
-int Query::META;
-std::mutex Query::ListMutex;
-std::deque<QueryData*> Query::DataList;
-std::deque<std::pair<Query*, QueryData*>> Query::RemoveList;
+#include <thread>
+#include <chrono>
 
-void Query::Acquire(Lua::ILuaBase* LUA, QueryFunc func) 
-{
-	QueryData* data = NULL;
-	if (!m_sync) {
-		data = new QueryData;
-
-		ListMutex.lock();
-		DataList.push_back(data);
-		ListMutex.unlock();
-	}
-
-	auto lambda = [LUA, data, func]() {
-		if (data != NULL) {
-			Global::DevMsg(1, "[Thread] Waiting main thread for sync...\n");
-			std::unique_lock<std::mutex> lck(data->mtx);
-			data->cv.wait(lck);
-			Global::DevMsg(1, "[Thread] Main thread synced!\n");
-		}
-
-		func(LUA);
-		LUA->Pop(LUA->Top()); // Clearing stack
-
-		if (data != NULL) {
-			Global::DevMsg(1, "[Thread] Desyncing main thread...\n");
-			std::lock_guard<std::mutex> guard(data->mtx);
-			data->done = true;
-			data->cv.notify_one();
-			Global::DevMsg(1, "[Thread] Main thread desynced!\n");
-		}
-	};
-
-	if (data != NULL) {
-		Global::DevMsg(1, "Starting thread for synching lua state...\n");
-		std::thread(lambda).detach();
-	}
-	else 
-		lambda();
-		
-}
-
-bool Query::isUnblocked()
-{
-	return !m_done && !m_sync;
-}
-
-void Query::New(Lua::ILuaBase* LUA, QueryThreadFunc func)
-{
-	auto q = new Query;
-	auto lambda = [](Lua::ILuaBase* LUA, Query* q, QueryThreadFunc func) {
-		{
-			std::unique_lock<std::mutex> lck(q->m_mutex);
-			auto status = q->m_cvar.wait_for(lck, std::chrono::milliseconds(500), [q] { return q->m_sync; });
-		}
-
-		//{
-		//	std::unique_lock<std::mutex> lck(q->m_mutex);
-		//	while (!q->m_sync.load()) {
-		//		auto status = q->m_cvar.wait_for(lck, std::chrono::milliseconds(10000));
-		//	}
-
-		//	if (q->m_sync.load())
-		//		Global::DevMsg("[Thread] Thread is synched with main thread!\n");
-		//}
-
-		func(LUA, q);
-		
-		q->m_mutex.lock();
-		q->m_done = true;
-		q->m_mutex.unlock();
-
-		q->m_cvar.notify_one();
-	};
-
-	std::thread(lambda, LUA, q, func).detach();
-	LUA->PushUserType(q, META);
-}
-
-Query* Query::CheckSelf(Lua::ILuaBase* LUA, int iStackPos)
-{
-	LUA->CheckType(iStackPos, META);
-	return LUA->GetUserType<Query>(iStackPos, META);
-}
-
-int Query::__tostring(lua_State* L)
+int Query::__gc(lua_State* L)
 {
 	Lua::ILuaBase* LUA = L->luabase;
 	LUA->SetState(L);
 
-	auto obj = CheckSelf(LUA);
-	std::string out = "Query: " + Global::PtrToStr(obj);
+	LUA->CheckType(1, META);
+	auto ptr = LUA->GetUserType<SmartPointer<Query>>(1, META);
+	if (ptr)
+		ptr->free();
 
-	LUA->PushString(out.c_str());
-	return 1;
+	return 0;
+}
+
+ void Query::Acquire(std::function<void(Lua::ILuaBase*)> func)
+{
+	{
+		std::unique_lock<std::mutex> lck(m_mtx);
+		m_cvar.wait_for(lck, std::chrono::milliseconds(500), [&] { return m_sync; });
+	}
+
+	if (m_sync) {
+		func(lua_object);
+	}
+	else {
+		std::lock_guard<std::mutex> guard(LuaMutex);
+		LuaQueue.push(func);
+	}
+}
+
+int Query::META;
+
+std::mutex Query::LuaMutex;
+std::queue<std::function<void(Lua::ILuaBase*)>> Query::LuaQueue;
+
+//std::mutex Query::ThreadMutex;
+//std::condition_variable Query::ThreadCVar;
+//bool Query::ThreadStopped;
+//std::queue<SmartPointer<Query>*> Query::ThreadQueue;
+//std::promise<SmartPointer<Query>*> Query::ThreadPromise;
+//std::future<SmartPointer<Query>*> Query::ThreadFuture;
+
+void Query::New(Lua::ILuaBase* LUA, std::function<void(Query*)> func)
+{
+	auto ptr = new SmartPointer<Query>;
+	auto q = ptr->guard();
+	q->m_func = func;
+	q->lua_object = LUA;
+
+	ptr->add();
+	std::thread([ptr] {
+		DevMsg(1, "New query: 0x%p\n", ptr);
+		if (ptr == nullptr)
+			return;
+
+		auto q = ptr->guard(false);
+		if (!q->lua_object)
+			return;
+
+		DevMsg(1, "Query is valid. launching func...\n");
+		q->m_func(ptr->get());
+
+		DevMsg(1, "Sending end message...\n");
+		std::lock_guard<std::mutex> guard(q->m_mtx);
+		q->m_done = true;
+		q->m_cvar.notify_one();
+	}).detach();
+	LUA->PushUserType(ptr, META);
 }
 
 int Query::Wait(lua_State* L)
 {
 	Lua::ILuaBase* LUA = L->luabase;
 	LUA->SetState(L);
-	auto obj = CheckSelf(LUA);
-	if (obj && obj->isUnblocked()) {
-		Global::DevMsg(1, "Trying sync thread...\n");
-		{
-			std::lock_guard<std::mutex> guard(obj->m_mutex);
-			obj->m_sync = true;
-		}
 
-		obj->m_cvar.notify_all();
-		Global::DevMsg(1, "Thread synched!\n");
+	LUA->CheckType(1, META);
+	auto ptr = LUA->GetUserType<SmartPointer<Query>>(1, META);
+	if (ptr) {
+		auto obj = ptr->guard();
+		if (obj->m_done)
+			return 0;
 
-		{
-			std::unique_lock<std::mutex> lck(obj->m_mutex);
-			obj->m_cvar.wait(lck, [obj] { return obj->m_done; });
-		}
+		std::unique_lock<std::mutex> lck(obj->m_mtx);
+		obj->m_sync = true;
+		obj->m_cvar.notify_one();
+		obj->m_cvar.wait(lck, [&obj] {
+			return obj->m_done;
+		});
 	}
 
 	return 0;
 }
+
+//void Query::ThreadFunc()
+//{
+//	DevMsg(1, "Query thread handler started!\n");
+//
+//	while (!ThreadStopped) {
+//		auto ptr = ThreadFuture.get();
+//		DevMsg(1, "New query: 0x%p\n", ptr);
+//		if (ptr == nullptr)
+//			continue;
+//
+//		auto q = ptr->guard(false);
+//		if (!q->lua_object)
+//			continue;
+//
+//		DevMsg(1, "Query is valid. launching func...\n");
+//		q->m_func(ptr->get());
+//
+//		DevMsg(1, "Sending end message...\n");
+//		std::lock_guard<std::mutex> guard(q->m_mtx);
+//		q->m_done = true;
+//		q->m_cvar.notify_one();
+//	}
+//
+//	DevMsg(1, "Query thread handler stopped!\n");
+//	//DevMsg(1, "Query thread started!");
+//	//do {
+//	//	std::unique_lock<std::mutex> lck{ThreadMutex};
+//	//	ThreadCVar.wait(lck, [&] {
+//	//		return ThreadStopped || !ThreadQueue.empty();
+//	//	});
+//
+//	//	while (!ThreadQueue.empty()) {
+//	//		auto ptr = ThreadQueue.front();
+//	//		ThreadQueue.pop();
+//
+//	//		if (!ptr)
+//	//			continue;
+//
+//	//		auto q = ptr->guard(false);
+//	//		if (!q->lua_object)
+//	//			continue;
+//
+//	//		q->m_func(ptr->get());
+//
+//	//		std::lock_guard<std::mutex> guard(q->m_mtx);
+//	//		q->m_done = true;
+//	//		q->m_cvar.notify_one();
+//	//	}
+//
+//	//	if (ThreadStopped) {
+//	//		DevMsg(1, "Query thread stopped!");
+//	//		break;
+//	//	}
+//	//} while(true);
+//}
 
 int Query::Think(lua_State* L)
 {
 	Lua::ILuaBase* LUA = L->luabase;
 	LUA->SetState(L);
 
-	std::lock_guard<std::mutex> guard(ListMutex);
-	while (!RemoveList.empty()) {
-		auto p = RemoveList.front();
-
-		if (p.first)
-			delete p.first;
-		if (p.second)
-			delete p.second;
-
-		RemoveList.pop_front();
-	}
-
-	while (!DataList.empty()) {
-		auto data = DataList.front();
-
-		Global::DevMsg(1, "[Main Thread] Syncing thread...\n");
-		std::unique_lock<std::mutex> lck(data->mtx);
-		data->cv.notify_one();
-		Global::DevMsg(1, "[Main Thread] Thread synced! Waiting for end...\n");
-		while (!data->isDone()) data->cv.wait(lck);
-		Global::DevMsg(1, "[Main Thread] Thread ended!\n");
-
-		RemoveList.push_back(std::make_pair((Query*)NULL, data));
-		DataList.pop_front();
+	std::lock_guard<std::mutex> guard(LuaMutex);
+	while (!LuaQueue.empty()) {
+		LuaQueue.front()(LUA);
+		LuaQueue.pop();
 	}
 
 	return 0;
-}
+} 
 
 void Query::Initialize(Lua::ILuaBase* LUA)
 {
 	META = LUA->CreateMetaTable("Query");
 		LUA->Push(-1); LUA->SetField(-2, "__index");
-		LUA->PushCFunction(__tostring); LUA->SetField(-2, "__tostring");
+		LUA->PushCFunction(__gc); LUA->SetField(-2, "__gc");
+		//LUA->PushCFunction(__tostring); LUA->SetField(-2, "__tostring");
 		LUA->PushCFunction(Wait); LUA->SetField(-2, "Wait");
 	LUA->Pop();
 
@@ -179,4 +187,19 @@ void Query::Initialize(Lua::ILuaBase* LUA)
 			LUA->Call(4, 0); // timer.Create(identifier, delay, repetitions, func)
 		LUA->Pop();
 	LUA->Pop();
+
+	//ThreadFuture = ThreadPromise.get_future();
+	//std::thread(&ThreadFunc).detach();
+	//std::thread(&Query::ThreadFunc).detach();
+}
+
+void Query::Deinitialize()
+{
+
+	//ThreadStopped = true;
+	//ThreadPromise.set_value(nullptr);
+
+	//std::lock_guard<std::mutex> guard(ThreadMutex);
+	//ThreadStopped = true;
+	//ThreadCVar.notify_one();
 }

@@ -4,6 +4,7 @@
 #include "main.h"
 #include "client.h"
 #include "pointer.h"
+#include <mutex>
 #include <mongocxx/collection.hpp>
 
 class Collection {

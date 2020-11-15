@@ -129,7 +129,7 @@ int Database::ListCollections(lua_State* L)
 	}
 
 	ptr->add();
-	Query::New(LUA, [ptr, func](Lua::ILuaBase* LUA, Query* q) {
+	Query::New(LUA, [ptr, func](Query* q) {
 		Result r;
 		auto obj = ptr->guard(false);
 		std::vector<bsoncxx::document::value> docs;
@@ -145,7 +145,7 @@ int Database::ListCollections(lua_State* L)
 			r.Error(err.code().value(), err.what());
 		}
 
-		q->Acquire(LUA, [r, func, docs](Lua::ILuaBase* LUA) mutable {
+		q->Acquire([r, func, docs](Lua::ILuaBase* LUA) mutable {
 			int k = 1;
 			LUA->CreateTable();
 			for (auto&& doc : docs) {
@@ -188,7 +188,7 @@ int Database::New(lua_State* L)
 		auto c = client->get()->pool->acquire();
 		obj->db = c->database(name);
 	}
-
+	
 	LUA->PushUserType(new Ptr(obj), META);
 	return 1;
 }

@@ -21,7 +21,7 @@ public:
 		DESTROYED = 5,
 	};
 
-	std::atomic_int status;
+	int status = DISCONNECTED;
 	mongocxx::pool* pool;
 
 	~Client();
