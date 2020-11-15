@@ -42,7 +42,6 @@ int Client::__gc(lua_State* L) noexcept
 	LUA->SetState(L);
 
 	auto ptr = CheckSelf(LUA);
-	DevMsg(1, (std::string() + "Client destroyed: " + Global::PtrToStr(ptr) + '\n').c_str());
 	if (ptr)
 		ptr->free();
 
