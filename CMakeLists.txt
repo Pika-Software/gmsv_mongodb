@@ -4,7 +4,7 @@ if(POLICY CMP0025)
     cmake_policy(SET CMP0025 NEW)
 endif()
 
-project(gmsv_mongodb VERSION 2.1.0 LANGUAGES CXX)
+project(gmsv_mongodb VERSION 2.1.1 LANGUAGES CXX)
 
 # Enforce the C++ standard, and disable extensions.
 if(NOT DEFINED CMAKE_CXX_STANDARD)
@@ -20,7 +20,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # NOTE: For this to work, the CMAKE_PREFIX_PATH variable must be set to point to the directory that
 # was used as the argument to CMAKE_INSTALL_PREFIX when building libmongocxx.
 find_package(libmongocxx-static REQUIRED)
-find_package(libbsoncxx-static REQUIRED)
 
 # Variables
 set(VERSION ${PROJECT_VERSION})

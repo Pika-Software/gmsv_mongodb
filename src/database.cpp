@@ -55,7 +55,7 @@ int Database::Name(lua_State* L)
 		return 0;
 	}
 
-	LUA->PushString(ptr->get()->db.name().data());
+	LUA->PushString(ptr->get()->db.data());
 	return 1;
 }
 
@@ -64,23 +64,23 @@ int Database::Drop(lua_State* L)
 	Lua::ILuaBase* LUA = L->luabase;
 	LUA->SetState(L);
 
-	auto ptr = CheckSelf(LUA);
-	if (!ptr) {
-		LUA->ArgError(1, "Bad database object");
-		return 0;
-	}
+	// auto ptr = CheckSelf(LUA);
+	// if (!ptr) {
+	// 	LUA->ArgError(1, "Bad database object");
+	// 	return 0;
+	// }
 
-	Result r;
-	auto obj = ptr->guard();
+	// Result r;
+	// auto obj = ptr->guard();
 
-	try {
-		obj->db.drop();
-	}
-	catch (std::system_error err) {
-		r.Error(err.code().value(), err.what());
-	}
+	// try {
+	// 	obj->db.drop();
+	// }
+	// catch (std::system_error err) {
+	// 	r.Error(err.code().value(), err.what());
+	// }
 
-	r.Push(LUA); r.Free(LUA);
+	// r.Push(LUA); r.Free(LUA);
 	return 1;
 }
 
@@ -89,25 +89,25 @@ int Database::HasCollection(lua_State* L)
 	Lua::ILuaBase* LUA = L->luabase;
 	LUA->SetState(L);
 
-	auto ptr = CheckSelf(LUA);
-	if (!ptr) {
-		LUA->ArgError(1, "Bad database object");
-		return 0;
-	}
+	// auto ptr = CheckSelf(LUA);
+	// if (!ptr) {
+	// 	LUA->ArgError(1, "Bad database object");
+	// 	return 0;
+	// }
 
-	auto name = LUA->CheckString(2);
-	auto obj = ptr->guard();
-	Result r;
+	// auto name = LUA->CheckString(2);
+	// auto obj = ptr->guard();
+	// Result r;
 
-	try {
-		bool has = obj->db.has_collection(name);
-		r.data["data"] = has;
-	}
-	catch (std::system_error err) {
-		r.Error(err.code().value(), err.what());
-	}
+	// try {
+	// 	bool has = obj->db.has_collection(name);
+	// 	r.data["data"] = has;
+	// }
+	// catch (std::system_error err) {
+	// 	r.Error(err.code().value(), err.what());
+	// }
 
-	r.Push(LUA); r.Free(LUA);
+	// r.Push(LUA); r.Free(LUA);
 	return 1;
 }
 
@@ -135,7 +135,9 @@ int Database::ListCollections(lua_State* L)
 		std::vector<bsoncxx::document::value> docs;
 
 		try {
-			auto cur = obj->db.list_collections();
+			auto c = obj->client->get()->pool->acquire();
+			auto db = c->database(obj->db);
+			auto cur = db.list_collections();
 
 			for (auto&& doc : cur) {
 				docs.push_back(bsoncxx::document::value(doc));
@@ -173,8 +175,8 @@ int Database::New(lua_State* L)
 		return 0;
 	}
 
-	const char* name = LUA->CheckString(2);
-	if (std::string(name).empty()) {
+	std::string name = LUA->CheckString(2);
+	if (name.empty()) {
 		LUA->ArgError(2, "Empty database name");
 		return 0;
 	}
@@ -183,11 +185,7 @@ int Database::New(lua_State* L)
 
 	auto obj = new Database;
 	obj->client = client;
-	
-	{
-		auto c = client->get()->pool->acquire();
-		obj->db = c->database(name);
-	}
+	obj->db = name;
 	
 	LUA->PushUserType(new Ptr(obj), META);
 	return 1;

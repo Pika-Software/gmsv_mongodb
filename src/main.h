@@ -3,12 +3,14 @@
 
 #include <string>
 #include <bsoncxx/stdx/optional.hpp>
+#include <bsoncxx/stdx/string_view.hpp>
 #include "config.h"
 #include "GarrysMod/Lua/Interface.h"
 
 using namespace GarrysMod;
 using bsoncxx::stdx::optional;
 using bsoncxx::stdx::make_optional;
+using bsoncxx::stdx::string_view;
 
 #ifdef WIN32
 typedef void(__stdcall *f_DevMsg)(int level, const char* pMsg, ...);

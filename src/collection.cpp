@@ -79,7 +79,9 @@ int Collection::InsertOne(lua_State* L)
 		Result r;
 
 		try {
-			auto res = obj->coll.insert_one(doc.view(), options);
+			auto c = obj->client->get()->pool->acquire();
+			auto coll = c->database(obj->db).collection(obj->coll);
+			auto res = coll.insert_one(doc.view(), options);
 			if (res)
 				r.SetResult(res.value());
 		}
@@ -134,7 +136,9 @@ int Collection::InsertMany(lua_State* L)
 		Result r;
 
 		try {
-			auto res = obj->coll.insert_many(docs, options);
+			auto c = obj->client->get()->pool->acquire();
+			auto coll = c->database(obj->db).collection(obj->coll);
+			auto res = coll.insert_many(docs, options);
 			if (res)
 				r.SetResult(res.value());
 		}
@@ -185,7 +189,9 @@ int Collection::FindOne(lua_State* L)
 		Result r;
 
 		try {
-			doc = obj->coll.find_one(filter.view(), options);
+			auto c = obj->client->get()->pool->acquire();
+			auto coll = c->database(obj->db).collection(obj->coll);
+			doc = coll.find_one(filter.view(), options);
 		}
 		catch (std::system_error err) {
 			r.Error(err.code().value(), err.what());
@@ -238,7 +244,9 @@ int Collection::Find(lua_State* L)
 		Result r;
 
 		try {
-			auto cur = obj->coll.find(filter.view(), options);
+			auto c = obj->client->get()->pool->acquire();
+			auto coll = c->database(obj->db).collection(obj->coll);
+			auto cur = coll.find(filter.view(), options);
 			for (auto&& doc : cur) {
 				docs.emplace_back(doc);
 			}
@@ -304,7 +312,9 @@ int Collection::UpdateOne(lua_State* L)
 		Result r;
 
 		try {
-			auto res = obj->coll.update_one(filter.view(), update.view(), options);
+			auto c = obj->client->get()->pool->acquire();
+			auto coll = c->database(obj->db).collection(obj->coll);
+			auto res = coll.update_one(filter.view(), update.view(), options);
 			if (res)
 				r.SetResult(res.value());
 		}
@@ -357,7 +367,9 @@ int Collection::UpdateMany(lua_State* L)
 		Result r;
 
 		try {
-			auto res = obj->coll.update_many(filter.view(), update.view(), options);
+			auto c = obj->client->get()->pool->acquire();
+			auto coll = c->database(obj->db).collection(obj->coll);
+			auto res = coll.update_many(filter.view(), update.view(), options);
 			if (res)
 				r.SetResult(res.value());
 		}
@@ -407,7 +419,9 @@ int Collection::DeleteOne(lua_State* L)
 		Result r;
 
 		try {
-			auto res = obj->coll.delete_one(filter.view(), options);
+			auto c = obj->client->get()->pool->acquire();
+			auto coll = c->database(obj->db).collection(obj->coll);
+			auto res = coll.delete_one(filter.view(), options);
 			if (res)
 				r.SetResult(res.value());
 		}
@@ -457,7 +471,9 @@ int Collection::DeleteMany(lua_State* L)
 		Result r;
 
 		try {
-			auto res = obj->coll.delete_many(filter.view(), options);
+			auto c = obj->client->get()->pool->acquire();
+			auto coll = c->database(obj->db).collection(obj->coll);
+			auto res = coll.delete_many(filter.view(), options);
 			if (res)
 				r.SetResult(res.value());
 		}
@@ -483,8 +499,8 @@ int Collection::New(lua_State* L)
 		return 0;
 	}
 
-	const char* name = LUA->CheckString(2);
-	if (std::string(name).empty()) {
+	std::string name = LUA->CheckString(2);
+	if (name.empty()) {
 		LUA->ArgError(2, "Empty collection name");
 		return 0;
 	}
@@ -492,7 +508,8 @@ int Collection::New(lua_State* L)
 	auto db = ptr->get();
 	auto obj = new Collection;
 	obj->client = db->client;
-	obj->coll = db->db.collection(name);
+	obj->db = db->db;
+	obj->coll = name;
 	obj->client->add();
 
 	LUA->PushUserType(new Ptr(obj), META);

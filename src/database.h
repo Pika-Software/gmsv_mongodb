@@ -11,7 +11,7 @@ public:
 
 	static int META;
 
-	mongocxx::database db;
+	std::string db;
 	Client::Ptr* client;
 
 	~Database();

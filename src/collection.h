@@ -12,7 +12,9 @@ public:
 	typedef SmartPointer<Collection> Ptr;
 
 	static int META;
-	mongocxx::collection coll;
+	//mongocxx::collection coll;
+	std::string db;
+	std::string coll;
 	Client::Ptr* client;
 	~Collection();
 
